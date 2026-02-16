@@ -1,0 +1,15 @@
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\bin\Debug\net9.0\MutationAgentWorkflow.Agents.deps.json
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\bin\Debug\net9.0\MutationAgentWorkflow.Agents.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\bin\Debug\net9.0\MutationAgentWorkflow.Agents.pdb
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\bin\Debug\net9.0\MutationAgentWorkflow.Core.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\bin\Debug\net9.0\MutationAgentWorkflow.Core.pdb
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.csproj.AssemblyReference.cache
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.AssemblyInfoInputs.cache
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.AssemblyInfo.cs
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.csproj.CoreCompileInputs.cache
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\Mutation.A2E769F0.Up2Date
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\refint\MutationAgentWorkflow.Agents.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\MutationAgentWorkflow.Agents.pdb
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Agents\obj\Debug\net9.0\ref\MutationAgentWorkflow.Agents.dll

@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "MutationAgentWorkflow.Tools/1.0.0": {
+        "dependencies": {
+          "MutationAgentWorkflow.Core": "1.0.0"
+        },
+        "runtime": {
+          "MutationAgentWorkflow.Tools.dll": {}
+        }
+      },
+      "MutationAgentWorkflow.Core/1.0.0": {
+        "runtime": {
+          "MutationAgentWorkflow.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MutationAgentWorkflow.Tools/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "MutationAgentWorkflow.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

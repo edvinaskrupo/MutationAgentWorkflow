@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MutationAgentWorkflow.Core\MutationAgentWorkflow.Core.csproj" />
+    <ProjectReference Include="..\MutationAgentWorkflow.Agents\MutationAgentWorkflow.Agents.csproj" />
+    <ProjectReference Include="..\MutationAgentWorkflow.Tools\MutationAgentWorkflow.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+    <PackageReference Include="Microsoft.SemanticKernel" Version="1.71.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

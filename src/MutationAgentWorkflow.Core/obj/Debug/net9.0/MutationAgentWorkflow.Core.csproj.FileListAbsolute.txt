@@ -1,0 +1,11 @@
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\bin\Debug\net9.0\MutationAgentWorkflow.Core.deps.json
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\bin\Debug\net9.0\MutationAgentWorkflow.Core.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\bin\Debug\net9.0\MutationAgentWorkflow.Core.pdb
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.AssemblyInfoInputs.cache
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.AssemblyInfo.cs
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.csproj.CoreCompileInputs.cache
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\refint\MutationAgentWorkflow.Core.dll
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\MutationAgentWorkflow.Core.pdb
+C:\Users\Cheemsas\Desktop\Bachelor\BachelorProject\MutationAgentWorkflow\src\MutationAgentWorkflow.Core\obj\Debug\net9.0\ref\MutationAgentWorkflow.Core.dll
