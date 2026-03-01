@@ -1,9 +1,8 @@
-﻿using MutationAgentWorkflow.Core.Interfaces;
 using MutationAgentWorkflow.Core.Models;
 
 namespace MutationAgentWorkflow.Agents;
 
-public class MutationAnalysisAgent : IAgent
+public class MutationAnalysisAgent
 {
     public string Name => "Mutation Analysis Agent";
 

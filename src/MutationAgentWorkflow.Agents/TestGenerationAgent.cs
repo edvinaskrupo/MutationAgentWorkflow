@@ -1,11 +1,10 @@
-﻿using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
-using MutationAgentWorkflow.Core.Interfaces;
 using MutationAgentWorkflow.Core.Models;
 
 namespace MutationAgentWorkflow.Agents;
 
-public class TestGenerationAgent : IAgent
+public class TestGenerationAgent
 {
     private readonly Kernel _kernel;
     public string Name => "Test Generation Agent";

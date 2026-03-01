@@ -11,7 +11,7 @@ A Bachelor's thesis prototype demonstrating multi-agent workflow for improving u
 
 ## Prerequisites
 
-1. **.NET 8 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/8.0)
+1. **.NET 9 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/9.0)
 2. **OpenAI API Key** - [Get one here](https://platform.openai.com/api-keys)
 3. **Stryker.NET** (optional for full mutation testing):
 ```bash
@@ -20,19 +20,23 @@ A Bachelor's thesis prototype demonstrating multi-agent workflow for improving u
 
 ## Setup
 
-1. Clone or create the project structure
-2. Open `src/MutationAgentWorkflow.Console/appsettings.json`
-3. Replace `YOUR_OPENAI_API_KEY_HERE` with your actual OpenAI API key
-4. Build the solution:
+1. Clone or create the project structure.
+2. Open `MutationAgentWorkflow/src/MutationAgentWorkflow.Console/appsettings.json` and set `OpenAI:ApiKey` to your API key (and optionally `OpenAI:Model`, e.g. `gpt-4o-mini`).
+3. Build from the repository root (single solution including all workflow projects):
 ```bash
-   dotnet build
+   dotnet build BachelorProject.sln
 ```
+   Or from this folder: `dotnet build MutationAgentWorkflow.sln`
 
 ## Running the Prototype
 ```bash
-cd src/MutationAgentWorkflow.Console
+cd MutationAgentWorkflow/src/MutationAgentWorkflow.Console
 dotnet run
 ```
+
+## Project structure
+
+The repository root contains a single solution (`BachelorProject.sln`) with the four workflow projects (Core, Agents, Tools, Console). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
 
 ## Current Limitations (Prototype Phase)
 

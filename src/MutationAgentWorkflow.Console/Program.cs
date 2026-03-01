@@ -1,7 +1,6 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using MutationAgentWorkflow.Agents;
 using MutationAgentWorkflow.Core.Models;
-using MutationAgentWorkflow.Tools;
 using System.Diagnostics;
 
 namespace MutationAgentWorkflow.Console;
@@ -63,10 +62,6 @@ public class Calculator
         var mutationAgent = new MutationAnalysisAgent();
         var improvementAgent = new TestImprovementAgent(apiKey, model);
 
-        // Initialize tools
-        var testRunner = new DotNetTestRunner();
-        var strykerRunner = new StrykerRunner();
-
         var stopwatch = Stopwatch.StartNew();
         var workflowResult = new WorkflowResult();
 
@@ -112,12 +107,8 @@ public class Calculator
             System.Console.WriteLine("NOTE: This is a prototype. In production, this would run Stryker.NET");
             System.Console.WriteLine("For now, using simulated mutation data...\n");
 
-            // In real implementation, you would:
-            // 1. Create a temporary test project
-            // 2. Add the generated tests
-            // 3. Run Stryker.NET
-            // var mutationReport = await strykerRunner.RunMutationTestingAsync(projectPath);
-
+            // For real Stryker integration: use StrykerRunner.RunMutationTestingAsync(projectPath)
+            // after creating a temp test project and writing generated tests to disk.
             var mutationReport = mutationAgent.ParseStrykerReport("");
             workflowResult.InitialMutationScore = mutationReport.MutationScore;
 
@@ -148,9 +139,6 @@ public class Calculator
                 var improvements = await improvementAgent.SuggestImprovementsAsync(mutationReport, testSuite);
                 System.Console.WriteLine(improvements);
                 System.Console.WriteLine();
-
-                workflowResult.ImprovementActions.Add("Analyzed survived mutants");
-                workflowResult.ImprovementActions.Add("Generated improvement suggestions");
             }
 
             // ===== Final Report =====
