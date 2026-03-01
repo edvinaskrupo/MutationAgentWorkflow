@@ -36,7 +36,9 @@ dotnet run
 
 ## Project structure
 
-The repository root contains a single solution (`BachelorProject.sln`) with the four workflow projects (Core, Agents, Tools, Console). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
+The repository root contains a single solution (`BachelorProject.sln`) with five projects: **Core**, **Agents**, **Tools**, **Console**, and **MutationAgentWorkflow.Sample**. The Console loads the **code under test** from a real class in the solution: by default it reads `MutationAgentWorkflow.Sample/Calculator.cs`. You can point at another file via `appsettings.json` (see below). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
+
+**Optional config** (in `MutationAgentWorkflow.Console/appsettings.json`): To test a different class, add `CodeUnderTest:SourceFile` (path to a `.cs` file, absolute or relative to the current directory) and optionally `CodeUnderTest:ClassName` (if omitted, the class name is derived from the file name). Example: `"CodeUnderTest": { "SourceFile": "../MutationAgentWorkflow.Sample/Calculator.cs", "ClassName": "Calculator" }`.
 
 ## Current Limitations (Prototype Phase)
 
@@ -44,6 +46,7 @@ The repository root contains a single solution (`BachelorProject.sln`) with the 
 - No iterative improvement loop (runs single pass)
 - Test file is generated but not automatically compiled/run
 - No actual project structure creation for test execution
+- Code under test is loaded from the Sample project (or from a path in config); generated tests are not yet wired to a test project that references Sample
 
 ## Extending This Prototype
 

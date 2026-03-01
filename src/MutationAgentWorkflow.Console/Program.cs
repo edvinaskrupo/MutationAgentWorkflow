@@ -20,40 +20,33 @@ class Program
         var apiKey = config["OpenAI:ApiKey"] ?? throw new Exception("OpenAI API key not found in appsettings.json");
         var model = config["OpenAI:Model"] ?? "gpt-4o";
 
-        // Example code to test (in a real scenario, you'd load from a file)
-        var exampleCode = @"
-namespace SampleApp;
+        // Load code under test from a real class file (optional: set CodeUnderTest:SourceFile and CodeUnderTest:ClassName in appsettings.json)
+        var sourceFilePath = config["CodeUnderTest:SourceFile"];
+        if (!string.IsNullOrWhiteSpace(sourceFilePath))
+            sourceFilePath = Path.IsPathRooted(sourceFilePath) ? sourceFilePath : Path.Combine(Directory.GetCurrentDirectory(), sourceFilePath.Trim());
+        if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
+        {
+            var baseDir = Directory.GetCurrentDirectory();
+            var fallback1 = Path.Combine(baseDir, "..", "MutationAgentWorkflow.Sample", "Calculator.cs");
+            var fallback2 = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "MutationAgentWorkflow.Sample", "Calculator.cs");
+            if (File.Exists(fallback1))
+                sourceFilePath = Path.GetFullPath(fallback1);
+            else if (File.Exists(fallback2))
+                sourceFilePath = Path.GetFullPath(fallback2);
+            else
+                throw new FileNotFoundException("Code-under-test source file not found. Set CodeUnderTest:SourceFile in appsettings.json to the path to a .cs file (e.g. ../MutationAgentWorkflow.Sample/Calculator.cs).");
+        }
 
-public class Calculator
-{
-    public int Add(int a, int b)
-    {
-        return a + b;
-    }
-
-    public int Subtract(int a, int b)
-    {
-        return a - b;
-    }
-
-    public int Multiply(int a, int b)
-    {
-        return a * b;
-    }
-
-    public int Divide(int a, int b)
-    {
-        if (b == 0)
-            throw new ArgumentException(""Cannot divide by zero"");
-        return a / b;
-    }
-}";
+        var sourceCode = await File.ReadAllTextAsync(sourceFilePath);
+        var className = config["CodeUnderTest:ClassName"];
+        if (string.IsNullOrWhiteSpace(className))
+            className = Path.GetFileNameWithoutExtension(sourceFilePath);
 
         var codeUnderTest = new CodeUnderTest
         {
-            SourceCode = exampleCode,
-            ClassName = "Calculator",
-            FilePath = "Calculator.cs"
+            SourceCode = sourceCode,
+            ClassName = className,
+            FilePath = Path.GetFileName(sourceFilePath)
         };
 
         // Initialize agents

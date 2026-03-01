@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -12,6 +12,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MutationAgentWorkflow.Agents", "src\MutationAgentWorkflow.Agents\MutationAgentWorkflow.Agents.csproj", "{0475E4A8-2A74-4A7C-B42A-658535312FE0}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MutationAgentWorkflow.Tools", "src\MutationAgentWorkflow.Tools\MutationAgentWorkflow.Tools.csproj", "{CACA1705-5E44-4CBF-A0B8-8F0090433445}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MutationAgentWorkflow.Sample", "src\MutationAgentWorkflow.Sample\MutationAgentWorkflow.Sample.csproj", "{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -71,6 +73,18 @@ Global
 		{CACA1705-5E44-4CBF-A0B8-8F0090433445}.Release|x64.Build.0 = Release|Any CPU
 		{CACA1705-5E44-4CBF-A0B8-8F0090433445}.Release|x86.ActiveCfg = Release|Any CPU
 		{CACA1705-5E44-4CBF-A0B8-8F0090433445}.Release|x86.Build.0 = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|x64.Build.0 = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Debug|x86.Build.0 = Debug|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|x64.ActiveCfg = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|x64.Build.0 = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|x86.ActiveCfg = Release|Any CPU
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -80,5 +94,6 @@ Global
 		{B69FE990-33A9-4367-9023-811BE3DC6313} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{0475E4A8-2A74-4A7C-B42A-658535312FE0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{CACA1705-5E44-4CBF-A0B8-8F0090433445} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{D4E5F6A7-B8C9-4D5E-9F0A-1B2C3D4E5F6A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
