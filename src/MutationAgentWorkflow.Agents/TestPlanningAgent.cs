@@ -1,5 +1,6 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
+using MutationAgentWorkflow.Core;
 using MutationAgentWorkflow.Core.Models;
 
 namespace MutationAgentWorkflow.Agents;
@@ -7,6 +8,7 @@ namespace MutationAgentWorkflow.Agents;
 public class TestPlanningAgent
 {
     private readonly Kernel _kernel;
+    private readonly CodeMetricsAnalyzer _metricsAnalyzer = new();
     public string Name => "Test Planning Agent";
 
     public TestPlanningAgent(string apiKey, string model = "gpt-4o")
@@ -16,49 +18,61 @@ public class TestPlanningAgent
         _kernel = builder.Build();
     }
 
-    public async Task<string> ExecuteAsync(string sourceCode)
+    public async Task<TestPlan> GeneratePlanAsync(CodeUnderTest code)
+    {
+        var metrics = _metricsAnalyzer.Analyze(code.SourceCode);
+
+        var plan = new TestPlan
+        {
+            Strategy = metrics.RecommendedStrategy,
+            Metrics = metrics
+        };
+
+        if (metrics.RecommendedStrategy == "Skip")
+        {
+            plan.Suggestion = metrics.Reasoning;
+            return plan;
+        }
+
+        var suggestion = await GetAiSuggestionAsync(code.SourceCode, metrics);
+        plan.Suggestion = suggestion;
+
+        return plan;
+    }
+
+    private async Task<string> GetAiSuggestionAsync(string sourceCode, CodeMetrics metrics)
     {
         var chatService = _kernel.GetRequiredService<IChatCompletionService>();
 
-        var prompt = $@"You are a test planning expert. Analyze this C# code and suggest a test strategy.
+        var depsInfo = metrics.InjectedDependencies.Count > 0
+            ? $"Injected dependencies: {string.Join(", ", metrics.InjectedDependencies)}"
+            : "No injected dependencies (pure logic class).";
+
+        var prompt = $@"You are a test planning expert. The test strategy has already been determined to be ""{metrics.RecommendedStrategy}"" based on code metrics.
+
+CODE METRICS:
+- Cyclomatic complexity: {metrics.CyclomaticComplexity}
+- {depsInfo}
+- Is controller/endpoint: {metrics.IsControllerOrEndpoint}
+- Strategy reasoning: {metrics.Reasoning}
 
 CODE:
 {sourceCode}
 
-Provide:
-1. Whether to write Unit tests or Integration tests (choose one)
-2. What dependencies should be mocked
-3. Which methods are most critical to test first
-4. Brief reasoning
+Based on this analysis, provide:
+1. Which methods are most critical to test first (ordered by priority)
+2. What edge cases and boundary conditions should be covered
+3. Which dependencies should be mocked (if integration tests)
 
 Format your response as:
-STRATEGY: [Unit/Integration]
-MOCKING: [list of dependencies to mock]
-PRIORITY METHODS: [list of methods]
-REASONING: [your reasoning]";
+PRIORITY METHODS: [list of methods with brief reason]
+EDGE CASES: [list of edge cases to cover]
+MOCKING: [list of dependencies to mock, or ""None"" for unit tests]";
 
         var history = new ChatHistory();
         history.AddUserMessage(prompt);
 
         var result = await chatService.GetChatMessageContentAsync(history);
-        return result.Content ?? "No response generated";
-    }
-
-    public async Task<TestPlan> GeneratePlanAsync(CodeUnderTest code)
-    {
-        var response = await ExecuteAsync(code.SourceCode);
-
-        // Simple parsing (you can make this more robust)
-        var plan = new TestPlan
-        {
-            Suggestion = response
-        };
-
-        if (response.Contains("STRATEGY: Unit", StringComparison.OrdinalIgnoreCase))
-            plan.Strategy = "Unit";
-        else if (response.Contains("STRATEGY: Integration", StringComparison.OrdinalIgnoreCase))
-            plan.Strategy = "Integration";
-
-        return plan;
+        return result.Content ?? "No suggestions generated.";
     }
 }

@@ -16,40 +16,62 @@ public class TestImprovementAgent
         _kernel = builder.Build();
     }
 
-    public async Task<string> ExecuteAsync(string input)
+    public async Task<string> ImproveTestsAsync(MutationReport report, TestSuite currentTests, CodeUnderTest code, TestPlan plan)
     {
         var chatService = _kernel.GetRequiredService<IChatCompletionService>();
 
-        var prompt = $@"You are a test improvement expert. Analyze these survived mutants and suggest specific test improvements.
+        var survivedDetails = string.Join("\n", report.SurvivedMutantDetails.Select(m =>
+            $"- {m.MutationType} at {m.Location}: '{m.OriginalCode}' -> '{m.MutatedCode}'"));
 
-{input}
+        var mockingNote = plan.Strategy == "Integration"
+            ? "Use Moq (Mock<T>) for all injected dependencies. Include 'using Moq;'."
+            : "This is a unit test class. Do NOT use any mocking framework.";
 
-For each survived mutant, suggest:
-1. What assertion to add or strengthen
-2. What test case is missing
-3. Concrete code changes
+        var prompt = $@"You are a test improvement expert. Your task is to improve the existing test code so that it kills the survived mutants listed below.
 
-Be specific and actionable.";
+SOURCE CODE UNDER TEST:
+{code.SourceCode}
+
+CURRENT TEST CODE:
+{currentTests.TestCode}
+
+MUTATION SCORE: {report.MutationScore}%
+TOTAL MUTANTS: {report.TotalMutants}
+KILLED: {report.KilledMutants}
+SURVIVED: {report.SurvivedMutants}
+
+SURVIVED MUTANT DETAILS:
+{survivedDetails}
+
+TEST STRATEGY: {plan.Strategy}
+{mockingNote}
+
+STRICT REQUIREMENTS:
+1. Return the COMPLETE, improved test class — not just the changes.
+2. Keep all existing tests that already pass and kill mutants.
+3. Add new test methods or strengthen assertions to kill survived mutants.
+4. Every test method MUST use explicit // Arrange, // Act, // Assert comment sections.
+5. Use descriptive method names: MethodName_Scenario_ExpectedBehavior.
+6. Include all necessary using statements.
+
+Generate ONLY the complete improved test class code. No explanations, no markdown fences.";
 
         var history = new ChatHistory();
         history.AddUserMessage(prompt);
 
         var result = await chatService.GetChatMessageContentAsync(history);
-        return result.Content ?? "No improvements suggested";
+        var improvedCode = result.Content ?? currentTests.TestCode;
+
+        return StripMarkdownFences(improvedCode);
     }
 
-    public async Task<string> SuggestImprovementsAsync(MutationReport report, TestSuite currentTests)
+    private static string StripMarkdownFences(string code)
     {
-        var input = $@"CURRENT TESTS:
-{currentTests.TestCode}
-
-MUTATION SCORE: {report.MutationScore}%
-SURVIVED MUTANTS: {report.SurvivedMutants}
-
-DETAILS:
-{string.Join("\n", report.SurvivedMutantDetails.Select(m =>
-    $"- {m.MutationType} at {m.Location}: '{m.OriginalCode}' -> '{m.MutatedCode}'"))}";
-
-        return await ExecuteAsync(input);
+        var lines = code.Split('\n').ToList();
+        if (lines.Count > 0 && lines[0].TrimStart().StartsWith("```"))
+            lines.RemoveAt(0);
+        if (lines.Count > 0 && lines[^1].TrimStart().StartsWith("```"))
+            lines.RemoveAt(lines.Count - 1);
+        return string.Join('\n', lines);
     }
 }

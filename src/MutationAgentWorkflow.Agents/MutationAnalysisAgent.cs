@@ -1,36 +1,15 @@
 using MutationAgentWorkflow.Core.Models;
+using MutationAgentWorkflow.Tools;
 
 namespace MutationAgentWorkflow.Agents;
 
 public class MutationAnalysisAgent
 {
+    private readonly StrykerRunner _strykerRunner = new();
     public string Name => "Mutation Analysis Agent";
 
-    public Task<string> ExecuteAsync(string input)
+    public async Task<MutationReport> RunAnalysisAsync(string testProjectPath, string sourceProjectPath)
     {
-        // This agent coordinates with StrykerRunner
-        return Task.FromResult("Mutation analysis coordinated");
-    }
-
-    public MutationReport ParseStrykerReport(string strykerJsonOutput)
-    {
-        // TODO: Parse actual Stryker JSON output
-        // For now, return a mock report
-        return new MutationReport
-        {
-            MutationScore = 75.0,
-            TotalMutants = 20,
-            KilledMutants = 15,
-            SurvivedMutants = 5,
-            SurvivedMutantDetails = new List<SurvivedMutant>
-            {
-                new() {
-                    MutationType = "Arithmetic Operator",
-                    Location = "Line 42",
-                    OriginalCode = "x + y",
-                    MutatedCode = "x - y"
-                }
-            }
-        };
+        return await _strykerRunner.RunMutationTestingAsync(testProjectPath, sourceProjectPath);
     }
 }

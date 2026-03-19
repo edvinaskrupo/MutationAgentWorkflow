@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using MutationAgentWorkflow.Agents;
 using MutationAgentWorkflow.Core.Models;
+using MutationAgentWorkflow.Tools;
 using System.Diagnostics;
 
 namespace MutationAgentWorkflow.Console;
@@ -11,7 +12,6 @@ class Program
     {
         System.Console.WriteLine("=== Mutation-Guided Agentic Test Generation Workflow ===\n");
 
-        // Load configuration
         var config = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json")
@@ -19,11 +19,150 @@ class Program
 
         var apiKey = config["OpenAI:ApiKey"] ?? throw new Exception("OpenAI API key not found in appsettings.json");
         var model = config["OpenAI:Model"] ?? "gpt-4o";
+        var maxIterations = int.TryParse(config["Workflow:MaxIterations"], out var mi) ? mi : 3;
+        var targetScore = double.TryParse(config["Workflow:TargetMutationScore"], out var ts) ? ts : 80.0;
 
-        // Load code under test from a real class file (optional: set CodeUnderTest:SourceFile and CodeUnderTest:ClassName in appsettings.json)
+        var codeUnderTest = await LoadCodeUnderTestAsync(config);
+
+        var planningAgent = new TestPlanningAgent(apiKey, model);
+        var generationAgent = new TestGenerationAgent(apiKey, model);
+        var mutationAgent = new MutationAnalysisAgent();
+        var improvementAgent = new TestImprovementAgent(apiKey, model);
+        var scaffolder = new TestProjectScaffolder();
+
+        var stopwatch = Stopwatch.StartNew();
+        var workflowResult = new WorkflowResult();
+
+        try
+        {
+            // ===== STAGE 1: Test Planning (deterministic strategy + AI suggestions) =====
+            PrintStageHeader(1, "Test Planning");
+
+            var testPlan = await planningAgent.GeneratePlanAsync(codeUnderTest);
+
+            PrintMetrics(testPlan);
+
+            if (testPlan.Strategy == "Skip")
+            {
+                System.Console.WriteLine("  Strategy: SKIP — no meaningful logic to test.");
+                System.Console.WriteLine($"  Reason: {testPlan.Metrics?.Reasoning}\n");
+                System.Console.WriteLine("Workflow complete — nothing to test.");
+                return;
+            }
+
+            System.Console.WriteLine($"  AI Suggestions:\n{Indent(testPlan.Suggestion, 4)}\n");
+
+            // ===== STAGE 2: Test Generation =====
+            PrintStageHeader(2, "Test Generation");
+
+            var testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+            System.Console.WriteLine($"  Generated {testSuite.TestFilePath}");
+            System.Console.WriteLine($"  ({CountLines(testSuite.TestCode)} lines of test code)\n");
+
+            workflowResult.TotalTestsGenerated++;
+
+            // ===== STAGE 3: Scaffold & Build =====
+            PrintStageHeader(3, "Project Scaffolding");
+
+            var scaffold = await scaffolder.ScaffoldAsync(
+                codeUnderTest.SourceCode,
+                codeUnderTest.ClassName,
+                testSuite.TestCode,
+                testPlan.Strategy);
+
+            if (!scaffold.BuildSucceeded)
+            {
+                System.Console.WriteLine("  Build FAILED. Generated tests have compilation errors.");
+                System.Console.WriteLine($"  Output:\n{Indent(scaffold.BuildOutput, 4)}");
+                System.Console.WriteLine("\n  Attempting to fix via re-generation...\n");
+
+                testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+                await scaffolder.UpdateTestCode(scaffold, testSuite.TestCode, codeUnderTest.ClassName);
+
+                if (!scaffold.BuildSucceeded)
+                {
+                    System.Console.WriteLine("  Build still FAILED after re-generation. Exiting.");
+                    return;
+                }
+            }
+
+            System.Console.WriteLine($"  Build succeeded.");
+            System.Console.WriteLine($"  Temp project: {scaffold.SolutionDir}\n");
+
+            // ===== STAGE 4: Iterative Mutation Testing & Improvement =====
+            PrintStageHeader(4, $"Mutation Testing Loop (max {maxIterations} iterations, target {targetScore}%)");
+
+            MutationReport? lastReport = null;
+
+            for (int iteration = 1; iteration <= maxIterations; iteration++)
+            {
+                System.Console.WriteLine($"  --- Iteration {iteration}/{maxIterations} ---");
+
+                var report = await mutationAgent.RunAnalysisAsync(scaffold.TestProjectPath, scaffold.SourceProjectPath);
+                lastReport = report;
+
+                if (iteration == 1)
+                    workflowResult.InitialMutationScore = report.MutationScore;
+
+                PrintMutationReport(report);
+                workflowResult.IterationsCompleted = iteration;
+
+                if (report.MutationScore >= targetScore)
+                {
+                    System.Console.WriteLine($"  Target mutation score ({targetScore}%) reached!\n");
+                    break;
+                }
+
+                if (report.SurvivedMutants == 0)
+                {
+                    System.Console.WriteLine("  No survived mutants. Nothing to improve.\n");
+                    break;
+                }
+
+                if (iteration < maxIterations)
+                {
+                    System.Console.WriteLine("  Improving tests to kill survived mutants...\n");
+                    var improvedCode = await improvementAgent.ImproveTestsAsync(report, testSuite, codeUnderTest, testPlan);
+                    testSuite.TestCode = improvedCode;
+
+                    await scaffolder.UpdateTestCode(scaffold, improvedCode, codeUnderTest.ClassName);
+
+                    if (!scaffold.BuildSucceeded)
+                    {
+                        System.Console.WriteLine("  Improved tests failed to build. Stopping iteration.");
+                        break;
+                    }
+
+                    System.Console.WriteLine("  Improved tests compiled successfully. Re-running Stryker...\n");
+                }
+            }
+
+            // ===== Final Report =====
+            stopwatch.Stop();
+            workflowResult.FinalMutationScore = lastReport?.MutationScore ?? 0;
+            workflowResult.TotalDuration = stopwatch.Elapsed;
+
+            PrintFinalReport(workflowResult);
+
+            var outputPath = Path.Combine(Directory.GetCurrentDirectory(), testSuite.TestFilePath);
+            await File.WriteAllTextAsync(outputPath, testSuite.TestCode);
+            System.Console.WriteLine($"Final test file saved to: {outputPath}");
+        }
+        catch (Exception ex)
+        {
+            System.Console.WriteLine($"\nError: {ex.Message}");
+            System.Console.WriteLine($"Stack trace:\n{ex.StackTrace}");
+        }
+    }
+
+    private static async Task<CodeUnderTest> LoadCodeUnderTestAsync(IConfiguration config)
+    {
         var sourceFilePath = config["CodeUnderTest:SourceFile"];
         if (!string.IsNullOrWhiteSpace(sourceFilePath))
-            sourceFilePath = Path.IsPathRooted(sourceFilePath) ? sourceFilePath : Path.Combine(Directory.GetCurrentDirectory(), sourceFilePath.Trim());
+            sourceFilePath = Path.IsPathRooted(sourceFilePath)
+                ? sourceFilePath
+                : Path.Combine(Directory.GetCurrentDirectory(), sourceFilePath.Trim());
+
         if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
         {
             var baseDir = Directory.GetCurrentDirectory();
@@ -34,7 +173,8 @@ class Program
             else if (File.Exists(fallback2))
                 sourceFilePath = Path.GetFullPath(fallback2);
             else
-                throw new FileNotFoundException("Code-under-test source file not found. Set CodeUnderTest:SourceFile in appsettings.json to the path to a .cs file (e.g. ../MutationAgentWorkflow.Sample/Calculator.cs).");
+                throw new FileNotFoundException(
+                    "Code-under-test source file not found. Set CodeUnderTest:SourceFile in appsettings.json.");
         }
 
         var sourceCode = await File.ReadAllTextAsync(sourceFilePath);
@@ -42,120 +182,70 @@ class Program
         if (string.IsNullOrWhiteSpace(className))
             className = Path.GetFileNameWithoutExtension(sourceFilePath);
 
-        var codeUnderTest = new CodeUnderTest
+        System.Console.WriteLine($"Source file: {sourceFilePath}");
+        System.Console.WriteLine($"Class name:  {className}\n");
+
+        return new CodeUnderTest
         {
             SourceCode = sourceCode,
             ClassName = className,
             FilePath = Path.GetFileName(sourceFilePath)
         };
-
-        // Initialize agents
-        var planningAgent = new TestPlanningAgent(apiKey, model);
-        var generationAgent = new TestGenerationAgent(apiKey, model);
-        var mutationAgent = new MutationAnalysisAgent();
-        var improvementAgent = new TestImprovementAgent(apiKey, model);
-
-        var stopwatch = Stopwatch.StartNew();
-        var workflowResult = new WorkflowResult();
-
-        try
-        {
-            // ===== STAGE 1: Test Planning =====
-            System.Console.WriteLine("📋 STAGE 1: Test Planning");
-            System.Console.WriteLine("─────────────────────────────────────────");
-
-            var testPlan = await planningAgent.GeneratePlanAsync(codeUnderTest);
-            System.Console.WriteLine(testPlan.Suggestion);
-            System.Console.WriteLine();
-
-            // Human-in-the-loop: Select strategy
-            System.Console.WriteLine("Select test strategy:");
-            System.Console.WriteLine("  1 = Unit Tests");
-            System.Console.WriteLine("  2 = Integration Tests");
-            System.Console.Write("Your choice: ");
-
-            var choice = System.Console.ReadLine();
-            testPlan.Strategy = choice == "2" ? "Integration" : "Unit";
-            System.Console.WriteLine($"✓ Selected: {testPlan.Strategy} Tests\n");
-
-            // ===== STAGE 2: Test Generation =====
-            System.Console.WriteLine("🔨 STAGE 2: Test Generation");
-            System.Console.WriteLine("─────────────────────────────────────────");
-
-            var testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
-            System.Console.WriteLine("Generated test code:");
-            System.Console.WriteLine(testSuite.TestCode);
-            System.Console.WriteLine();
-
-            // Save the test file (optional)
-            var outputPath = Path.Combine(Directory.GetCurrentDirectory(), testSuite.TestFilePath);
-            await File.WriteAllTextAsync(outputPath, testSuite.TestCode);
-            System.Console.WriteLine($"✓ Test file saved to: {outputPath}\n");
-
-            workflowResult.TotalTestsGenerated++;
-
-            // ===== STAGE 3: Mutation Testing =====
-            System.Console.WriteLine("🧬 STAGE 3: Mutation Analysis");
-            System.Console.WriteLine("─────────────────────────────────────────");
-            System.Console.WriteLine("NOTE: This is a prototype. In production, this would run Stryker.NET");
-            System.Console.WriteLine("For now, using simulated mutation data...\n");
-
-            // For real Stryker integration: use StrykerRunner.RunMutationTestingAsync(projectPath)
-            // after creating a temp test project and writing generated tests to disk.
-            var mutationReport = mutationAgent.ParseStrykerReport("");
-            workflowResult.InitialMutationScore = mutationReport.MutationScore;
-
-            System.Console.WriteLine($"Mutation Score: {mutationReport.MutationScore}%");
-            System.Console.WriteLine($"Total Mutants: {mutationReport.TotalMutants}");
-            System.Console.WriteLine($"Killed: {mutationReport.KilledMutants}");
-            System.Console.WriteLine($"Survived: {mutationReport.SurvivedMutants}");
-            System.Console.WriteLine();
-
-            if (mutationReport.SurvivedMutantDetails.Any())
-            {
-                System.Console.WriteLine("Survived mutants:");
-                foreach (var mutant in mutationReport.SurvivedMutantDetails)
-                {
-                    System.Console.WriteLine($"  • {mutant.MutationType} at {mutant.Location}");
-                    System.Console.WriteLine($"    Original: {mutant.OriginalCode}");
-                    System.Console.WriteLine($"    Mutated:  {mutant.MutatedCode}");
-                }
-                System.Console.WriteLine();
-            }
-
-            // ===== STAGE 4: Test Improvement =====
-            if (mutationReport.SurvivedMutants > 0)
-            {
-                System.Console.WriteLine("💡 STAGE 4: Test Improvement Suggestions");
-                System.Console.WriteLine("─────────────────────────────────────────");
-
-                var improvements = await improvementAgent.SuggestImprovementsAsync(mutationReport, testSuite);
-                System.Console.WriteLine(improvements);
-                System.Console.WriteLine();
-            }
-
-            // ===== Final Report =====
-            stopwatch.Stop();
-            workflowResult.FinalMutationScore = mutationReport.MutationScore;
-            workflowResult.TotalDuration = stopwatch.Elapsed;
-            workflowResult.IterationsCompleted = 1;
-
-            System.Console.WriteLine("📊 WORKFLOW SUMMARY");
-            System.Console.WriteLine("═════════════════════════════════════════");
-            System.Console.WriteLine($"Initial Mutation Score:  {workflowResult.InitialMutationScore}%");
-            System.Console.WriteLine($"Final Mutation Score:    {workflowResult.FinalMutationScore}%");
-            System.Console.WriteLine($"Tests Generated:         {workflowResult.TotalTestsGenerated}");
-            System.Console.WriteLine($"Iterations:              {workflowResult.IterationsCompleted}");
-            System.Console.WriteLine($"Total Duration:          {workflowResult.TotalDuration.TotalSeconds:F2}s");
-            System.Console.WriteLine("═════════════════════════════════════════");
-        }
-        catch (Exception ex)
-        {
-            System.Console.WriteLine($"\n❌ Error: {ex.Message}");
-            System.Console.WriteLine($"Stack trace:\n{ex.StackTrace}");
-        }
-
-        System.Console.WriteLine("\nPress any key to exit...");
-        System.Console.ReadKey();
     }
+
+    private static void PrintStageHeader(int stage, string name)
+    {
+        System.Console.WriteLine($"[STAGE {stage}] {name}");
+        System.Console.WriteLine(new string('-', 50));
+    }
+
+    private static void PrintMetrics(TestPlan plan)
+    {
+        var m = plan.Metrics;
+        if (m is null) return;
+
+        System.Console.WriteLine($"  Strategy:             {plan.Strategy} (deterministic)");
+        System.Console.WriteLine($"  Cyclomatic complexity: {m.CyclomaticComplexity}");
+        System.Console.WriteLine($"  Dependencies:          {m.DependencyCount} ({(m.InjectedDependencies.Count > 0 ? string.Join(", ", m.InjectedDependencies) : "none")})");
+        System.Console.WriteLine($"  Controller/endpoint:   {m.IsControllerOrEndpoint}");
+        System.Console.WriteLine($"  Reasoning:             {m.Reasoning}\n");
+    }
+
+    private static void PrintMutationReport(MutationReport report)
+    {
+        System.Console.WriteLine($"  Mutation Score: {report.MutationScore}%");
+        System.Console.WriteLine($"  Total: {report.TotalMutants} | Killed: {report.KilledMutants} | Survived: {report.SurvivedMutants}");
+
+        foreach (var mutant in report.SurvivedMutantDetails.Take(10))
+        {
+            System.Console.WriteLine($"    - [{mutant.MutationType}] {mutant.Location}");
+            if (!string.IsNullOrWhiteSpace(mutant.OriginalCode))
+                System.Console.WriteLine($"      '{mutant.OriginalCode}' -> '{mutant.MutatedCode}'");
+        }
+
+        if (report.SurvivedMutantDetails.Count > 10)
+            System.Console.WriteLine($"    ... and {report.SurvivedMutantDetails.Count - 10} more survived mutants.");
+
+        System.Console.WriteLine();
+    }
+
+    private static void PrintFinalReport(WorkflowResult result)
+    {
+        System.Console.WriteLine("\n=== WORKFLOW SUMMARY ===");
+        System.Console.WriteLine($"  Initial Mutation Score: {result.InitialMutationScore}%");
+        System.Console.WriteLine($"  Final Mutation Score:   {result.FinalMutationScore}%");
+        System.Console.WriteLine($"  Score Improvement:      +{result.FinalMutationScore - result.InitialMutationScore}%");
+        System.Console.WriteLine($"  Tests Generated:        {result.TotalTestsGenerated}");
+        System.Console.WriteLine($"  Iterations Completed:   {result.IterationsCompleted}");
+        System.Console.WriteLine($"  Total Duration:         {result.TotalDuration.TotalSeconds:F1}s");
+        System.Console.WriteLine(new string('=', 40) + "\n");
+    }
+
+    private static string Indent(string text, int spaces)
+    {
+        var prefix = new string(' ', spaces);
+        return string.Join("\n", text.Split('\n').Select(line => prefix + line));
+    }
+
+    private static int CountLines(string text) => text.Split('\n').Length;
 }

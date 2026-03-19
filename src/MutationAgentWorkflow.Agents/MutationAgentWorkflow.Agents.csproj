@@ -1,7 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\MutationAgentWorkflow.Core\MutationAgentWorkflow.Core.csproj" />
+    <ProjectReference Include="..\MutationAgentWorkflow.Tools\MutationAgentWorkflow.Tools.csproj" />
   </ItemGroup>
 
   <ItemGroup>
