@@ -58,7 +58,7 @@ The repository has **one solution** at the root: `BachelorProject.sln`. It conta
 | **MutationAgentWorkflow.Agents** | AI agents | `TestPlanningAgent`, `TestGenerationAgent`, `MutationAnalysisAgent`, `TestImprovementAgent` (uses Semantic Kernel + Core) |
 | **MutationAgentWorkflow.Tools** | Optional tooling for future use | `StrykerRunner`, `DotNetTestRunner` (not used in the current single-pass run) |
 | **MutationAgentWorkflow.Console** | Entry point and workflow orchestration | `Program.cs`, `appsettings.json`; references Core, Agents, Tools |
-| **MutationAgentWorkflow.Sample** | Code under test (real class) | `Calculator.cs`; Console loads its source from disk by default |
+| **MutationAgentWorkflow.Sample** | Code under test (real classes) | `PasswordValidator.cs` (unit), `UserService.cs` (integration); Console loads source from disk by default |
 
 Dependency flow:
 
@@ -84,7 +84,8 @@ BachelorProject/
         ├── MutationAgentWorkflow.Tools/
         │   └── *.cs                        ← StrykerRunner, DotNetTestRunner
         ├── MutationAgentWorkflow.Sample/
-        │   └── Calculator.cs               ← Real class under test (Console loads this by default)
+        │   ├── PasswordValidator.cs        ← Pure logic class (unit-test path, Console default)
+│   └── UserService.cs              ← Service with DI (integration-test path)
         └── MutationAgentWorkflow.Console/
             ├── Program.cs                  ← Workflow: load config, run 4 stages, print summary
             └── appsettings.json            ← OpenAI:ApiKey, OpenAI:Model
@@ -117,7 +118,7 @@ BachelorProject/
 ### 5.4 Console (Program.cs) – Workflow Logic
 
 1. Load `appsettings.json` (OpenAI API key and model; optionally `CodeUnderTest:SourceFile` and `CodeUnderTest:ClassName`).
-2. Load **CodeUnderTest** from a real class file: resolve path from config or use default `MutationAgentWorkflow.Sample/Calculator.cs`, read source with `File.ReadAllTextAsync`, derive class name from file name if not in config.
+2. Load **CodeUnderTest** from a real class file: resolve path from config or use default `MutationAgentWorkflow.Sample/PasswordValidator.cs`, read source with `File.ReadAllTextAsync`, derive class name from file name if not in config.
 3. **Stage 1:** Call `TestPlanningAgent.GeneratePlanAsync` → print suggestion → ask user to choose 1 (Unit) or 2 (Integration) → set `TestPlan.Strategy`.
 4. **Stage 2:** Call `TestGenerationAgent.GenerateTestsAsync` → print generated code → save to a file (e.g. `CalculatorTests.cs` in the current directory).
 5. **Stage 3:** Call `MutationAnalysisAgent.ParseStrykerReport("")` to get the **mock** mutation report → print score and survived mutants.
@@ -191,7 +192,7 @@ There is no automated test suite (no unit/integration tests) for the prototype i
 - **Mutation testing is simulated** – No real Stryker run; mutation report is hardcoded in `MutationAnalysisAgent.ParseStrykerReport`.
 - **Single pass** – No loop to re-generate tests from improvement suggestions until a target mutation score is reached.
 - **Generated tests are not compiled or run** – The test file is written to disk but not added to a test project; `DotNetTestRunner` and `StrykerRunner` are not invoked.
-- **Code under test** – Loaded from the real class `MutationAgentWorkflow.Sample/Calculator.cs` by default, or from a path set in `CodeUnderTest:SourceFile` in appsettings; generated tests are not yet wired to a test project that references Sample.
+- **Code under test** – Loaded from the real class `MutationAgentWorkflow.Sample/PasswordValidator.cs` by default, or from a path set in `CodeUnderTest:SourceFile` in appsettings; `UserService.cs` is also available as an integration-test sample.
 
 ---
 

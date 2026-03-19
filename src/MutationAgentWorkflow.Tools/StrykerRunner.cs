@@ -12,19 +12,25 @@ public class StrykerRunner
         {
             var testProjectDir = Path.GetDirectoryName(testProjectPath)!;
             var sourceProjectName = Path.GetFileNameWithoutExtension(sourceProjectPath);
+            var outputDir = Path.Combine(testProjectDir, "StrykerOutput");
 
-            var arguments = $"stryker --project {sourceProjectName}.csproj --reporter json --reporter cleartext --output \"{Path.Combine(testProjectDir, "StrykerOutput")}\"";
+            var strykerArgs = $"--project {sourceProjectName}.csproj --reporter json --reporter cleartext --output \"{outputDir}\"";
 
-            Console.WriteLine($"  Running: dotnet {arguments}");
-            Console.WriteLine($"  Working directory: {testProjectDir}");
+            Console.WriteLine($"  Running Stryker in: {testProjectDir}");
 
-            var (exitCode, output, error) = await RunCommandAsync("dotnet", arguments, testProjectDir);
+            var (exitCode, output, error) = await RunCommandAsync("dotnet", $"stryker {strykerArgs}", testProjectDir);
+
+            if (exitCode != 0 && error.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine("  'dotnet stryker' not found, trying 'dotnet-stryker'...");
+                (exitCode, output, error) = await RunCommandAsync("dotnet-stryker", strykerArgs, testProjectDir);
+            }
 
             if (exitCode != 0)
             {
                 Console.WriteLine($"  Stryker exited with code {exitCode}.");
                 if (!string.IsNullOrWhiteSpace(error))
-                    Console.WriteLine($"  stderr: {error[..Math.Min(error.Length, 500)]}");
+                    Console.WriteLine($"  stderr (truncated): {error[..Math.Min(error.Length, 300)]}");
             }
 
             var reportPath = FindStrykerReport(testProjectDir);

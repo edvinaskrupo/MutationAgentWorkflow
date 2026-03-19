@@ -18,7 +18,7 @@ class Program
             .Build();
 
         var apiKey = config["OpenAI:ApiKey"] ?? throw new Exception("OpenAI API key not found in appsettings.json");
-        var model = config["OpenAI:Model"] ?? "gpt-4o";
+        var model = config["OpenAI:Model"] ?? "gpt-5.4-nano";
         var maxIterations = int.TryParse(config["Workflow:MaxIterations"], out var mi) ? mi : 3;
         var targetScore = double.TryParse(config["Workflow:TargetMutationScore"], out var ts) ? ts : 80.0;
 
@@ -166,8 +166,8 @@ class Program
         if (string.IsNullOrWhiteSpace(sourceFilePath) || !File.Exists(sourceFilePath))
         {
             var baseDir = Directory.GetCurrentDirectory();
-            var fallback1 = Path.Combine(baseDir, "..", "MutationAgentWorkflow.Sample", "Calculator.cs");
-            var fallback2 = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "MutationAgentWorkflow.Sample", "Calculator.cs");
+            var fallback1 = Path.Combine(baseDir, "..", "MutationAgentWorkflow.Sample", "PasswordValidator.cs");
+            var fallback2 = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "MutationAgentWorkflow.Sample", "PasswordValidator.cs");
             if (File.Exists(fallback1))
                 sourceFilePath = Path.GetFullPath(fallback1);
             else if (File.Exists(fallback2))
@@ -204,7 +204,7 @@ class Program
         var m = plan.Metrics;
         if (m is null) return;
 
-        System.Console.WriteLine($"  Strategy:             {plan.Strategy} (deterministic)");
+        System.Console.WriteLine($"  Strategy:             {plan.Strategy}");
         System.Console.WriteLine($"  Cyclomatic complexity: {m.CyclomaticComplexity}");
         System.Console.WriteLine($"  Dependencies:          {m.DependencyCount} ({(m.InjectedDependencies.Count > 0 ? string.Join(", ", m.InjectedDependencies) : "none")})");
         System.Console.WriteLine($"  Controller/endpoint:   {m.IsControllerOrEndpoint}");

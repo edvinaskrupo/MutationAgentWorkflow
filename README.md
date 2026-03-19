@@ -36,9 +36,9 @@ dotnet run
 
 ## Project structure
 
-The repository root contains a single solution (`BachelorProject.sln`) with five projects: **Core**, **Agents**, **Tools**, **Console**, and **MutationAgentWorkflow.Sample**. The Console loads the **code under test** from a real class in the solution: by default it reads `MutationAgentWorkflow.Sample/Calculator.cs`. You can point at another file via `appsettings.json` (see below). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
+The repository root contains a single solution (`BachelorProject.sln`) with five projects: **Core**, **Agents**, **Tools**, **Console**, and **MutationAgentWorkflow.Sample**. The Console loads the **code under test** from a real class in the solution: by default it reads `MutationAgentWorkflow.Sample/PasswordValidator.cs`. You can point at another file via `appsettings.json` (see below). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
 
-**Optional config** (in `MutationAgentWorkflow.Console/appsettings.json`): To test a different class, add `CodeUnderTest:SourceFile` (path to a `.cs` file, absolute or relative to the current directory) and optionally `CodeUnderTest:ClassName` (if omitted, the class name is derived from the file name). Example: `"CodeUnderTest": { "SourceFile": "../MutationAgentWorkflow.Sample/Calculator.cs", "ClassName": "Calculator" }`.
+**Optional config** (in `MutationAgentWorkflow.Console/appsettings.json`): To test a different class, add `CodeUnderTest:SourceFile` (path to a `.cs` file, absolute or relative to the current directory) and optionally `CodeUnderTest:ClassName` (if omitted, the class name is derived from the file name). Example: `"CodeUnderTest": { "SourceFile": "../MutationAgentWorkflow.Sample/PasswordValidator.cs", "ClassName": "PasswordValidator" }`.
 
 ## Current Limitations (Prototype Phase)
 
