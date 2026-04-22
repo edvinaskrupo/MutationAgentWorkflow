@@ -87,6 +87,30 @@ class Program
             }
 
             System.Console.WriteLine($"  Build succeeded.");
+
+            if (!scaffold.TestsPass)
+            {
+                System.Console.WriteLine($"  Tests FAILED on original code ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed).");
+                System.Console.WriteLine($"  Output:\n{Indent(scaffold.TestOutput, 4)}");
+                System.Console.WriteLine("\n  Attempting to fix via re-generation...\n");
+
+                testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+                await scaffolder.UpdateTestCode(scaffold, testSuite.TestCode, codeUnderTest.ClassName);
+
+                if (!scaffold.BuildSucceeded)
+                {
+                    System.Console.WriteLine("  Re-generated tests failed to build. Exiting.");
+                    return;
+                }
+
+                if (!scaffold.TestsPass)
+                {
+                    System.Console.WriteLine($"  Tests still FAIL after re-generation ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed). Exiting.");
+                    return;
+                }
+            }
+
+            System.Console.WriteLine($"  All tests pass ({scaffold.TestsPassed} passed).");
             System.Console.WriteLine($"  Temp project: {scaffold.SolutionDir}\n");
 
             // ===== STAGE 4: Iterative Mutation Testing & Improvement =====
@@ -133,7 +157,13 @@ class Program
                         break;
                     }
 
-                    System.Console.WriteLine("  Improved tests compiled successfully. Re-running Stryker...\n");
+                    if (!scaffold.TestsPass)
+                    {
+                        System.Console.WriteLine($"  Improved tests fail on original code ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed). Stopping iteration.");
+                        break;
+                    }
+
+                    System.Console.WriteLine($"  Improved tests pass ({scaffold.TestsPassed} passed). Re-running Stryker...\n");
                 }
             }
 
@@ -205,7 +235,12 @@ class Program
         if (m is null) return;
 
         System.Console.WriteLine($"  Strategy:             {plan.Strategy}");
-        System.Console.WriteLine($"  Cyclomatic complexity: {m.CyclomaticComplexity}");
+        System.Console.WriteLine($"  Cyclomatic complexity: {m.CyclomaticComplexity} (total)");
+        if (m.MethodComplexities.Count > 0)
+        {
+            foreach (var kv in m.MethodComplexities.OrderByDescending(kv => kv.Value))
+                System.Console.WriteLine($"    {kv.Key}: {kv.Value}");
+        }
         System.Console.WriteLine($"  Dependencies:          {m.DependencyCount} ({(m.InjectedDependencies.Count > 0 ? string.Join(", ", m.InjectedDependencies) : "none")})");
         System.Console.WriteLine($"  Controller/endpoint:   {m.IsControllerOrEndpoint}");
         System.Console.WriteLine($"  Reasoning:             {m.Reasoning}\n");

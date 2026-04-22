@@ -12,6 +12,10 @@ public class TestProjectScaffolder
         public string TestFilePath { get; set; } = string.Empty;
         public bool BuildSucceeded { get; set; }
         public string BuildOutput { get; set; } = string.Empty;
+        public bool TestsPass { get; set; }
+        public string TestOutput { get; set; } = string.Empty;
+        public int TestsPassed { get; set; }
+        public int TestsFailed { get; set; }
     }
 
     public async Task<ScaffoldResult> ScaffoldAsync(
@@ -44,6 +48,16 @@ public class TestProjectScaffolder
         result.BuildSucceeded = exitCode == 0;
         result.BuildOutput = output;
 
+        if (result.BuildSucceeded)
+        {
+            var testRunner = new DotNetTestRunner();
+            var testResult = await testRunner.RunTestsAsync(baseDir);
+            result.TestsPass = testResult.AllTestsPass;
+            result.TestOutput = testResult.Output;
+            result.TestsPassed = testResult.Passed;
+            result.TestsFailed = testResult.Failed;
+        }
+
         return result;
     }
 
@@ -56,6 +70,20 @@ public class TestProjectScaffolder
         var (exitCode, output, _) = await RunCommandAsync("dotnet", "build", scaffold.SolutionDir);
         scaffold.BuildSucceeded = exitCode == 0;
         scaffold.BuildOutput = output;
+
+        if (scaffold.BuildSucceeded)
+        {
+            var testRunner = new DotNetTestRunner();
+            var testResult = await testRunner.RunTestsAsync(scaffold.SolutionDir);
+            scaffold.TestsPass = testResult.AllTestsPass;
+            scaffold.TestOutput = testResult.Output;
+            scaffold.TestsPassed = testResult.Passed;
+            scaffold.TestsFailed = testResult.Failed;
+        }
+        else
+        {
+            scaffold.TestsPass = false;
+        }
     }
 
     private static async Task WriteSourceProject(string dir, string sourceCode, string className)
