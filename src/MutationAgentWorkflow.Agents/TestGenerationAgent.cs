@@ -41,9 +41,16 @@ public class TestGenerationAgent
         var metricsSection = "";
         if (plan.Metrics is not null)
         {
+            var perMethodCc = plan.Metrics.MethodComplexities.Count > 0
+                ? string.Join(", ", plan.Metrics.MethodComplexities
+                    .OrderByDescending(kv => kv.Value)
+                    .Select(kv => $"{kv.Key}: {kv.Value}"))
+                : "N/A";
+
             metricsSection = $@"
 CODE METRICS:
-- Cyclomatic complexity: {plan.Metrics.CyclomaticComplexity}
+- Total cyclomatic complexity: {plan.Metrics.CyclomaticComplexity}
+- Per-method complexity (highest first): {perMethodCc}
 - Injected dependencies: {(plan.Metrics.InjectedDependencies.Count > 0 ? string.Join(", ", plan.Metrics.InjectedDependencies) : "None")}
 - Is controller/endpoint: {plan.Metrics.IsControllerOrEndpoint}
 ";

@@ -30,22 +30,33 @@ public class CodeMetricsAnalyzer
         "ControllerBase", "Controller", "ApiController"
     };
 
-    public CodeMetrics Analyze(string sourceCode)
+    public CodeMetrics Analyze(string sourceCode, string? targetClassName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(sourceCode);
         var root = tree.GetCompilationUnitRoot();
 
-        var classDecl = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
-        if (classDecl is null)
+        var allClasses = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
+        if (allClasses.Count == 0)
             return new CodeMetrics
             {
                 RecommendedStrategy = "Skip",
                 Reasoning = "No class declaration found in source."
             };
 
+        ClassDeclarationSyntax? classDecl = null;
+
+        if (!string.IsNullOrWhiteSpace(targetClassName))
+            classDecl = allClasses.FirstOrDefault(c =>
+                c.Identifier.Text.Equals(targetClassName, StringComparison.OrdinalIgnoreCase));
+
+        classDecl ??= allClasses
+            .OrderByDescending(c => c.Members.OfType<MethodDeclarationSyntax>().Count())
+            .First();
+
         var metrics = new CodeMetrics();
 
-        metrics.CyclomaticComplexity = CalculateCyclomaticComplexity(classDecl);
+        metrics.MethodComplexities = CalculatePerMethodComplexity(classDecl);
+        metrics.CyclomaticComplexity = metrics.MethodComplexities.Values.Sum();
         AnalyzeDependencies(classDecl, metrics);
         metrics.IsControllerOrEndpoint = DetectControllerOrEndpoint(classDecl);
 
@@ -54,21 +65,21 @@ public class CodeMetricsAnalyzer
         return metrics;
     }
 
-    private int CalculateCyclomaticComplexity(ClassDeclarationSyntax classDecl)
+    private Dictionary<string, int> CalculatePerMethodComplexity(ClassDeclarationSyntax classDecl)
     {
-        int complexity = 0;
+        var result = new Dictionary<string, int>();
 
         foreach (var method in classDecl.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            // Base complexity of 1 per method
-            complexity += 1;
+            var name = method.Identifier.Text;
+            int complexity = 1;
 
             foreach (var node in method.DescendantNodes())
             {
                 complexity += node switch
                 {
                     IfStatementSyntax => 1,
-                    ElseClauseSyntax => 0, // else itself doesn't branch; the if does
+                    ElseClauseSyntax => 0,
                     WhileStatementSyntax => 1,
                     ForStatementSyntax => 1,
                     ForEachStatementSyntax => 1,
@@ -76,18 +87,23 @@ public class CodeMetricsAnalyzer
                     CaseSwitchLabelSyntax => 1,
                     CasePatternSwitchLabelSyntax => 1,
                     CatchClauseSyntax => 1,
-                    ConditionalExpressionSyntax => 1, // ternary ?:
+                    ConditionalExpressionSyntax => 1,
                     BinaryExpressionSyntax bin when bin.IsKind(SyntaxKind.LogicalAndExpression) => 1,
                     BinaryExpressionSyntax bin2 when bin2.IsKind(SyntaxKind.LogicalOrExpression) => 1,
                     BinaryExpressionSyntax bin3 when bin3.IsKind(SyntaxKind.CoalesceExpression) => 1,
-                    ConditionalAccessExpressionSyntax => 1, // ?.
+                    ConditionalAccessExpressionSyntax => 1,
                     SwitchExpressionArmSyntax => 1,
                     _ => 0
                 };
             }
+
+            if (result.ContainsKey(name))
+                result[name] = Math.Max(result[name], complexity);
+            else
+                result[name] = complexity;
         }
 
-        return complexity;
+        return result;
     }
 
     private void AnalyzeDependencies(ClassDeclarationSyntax classDecl, CodeMetrics metrics)

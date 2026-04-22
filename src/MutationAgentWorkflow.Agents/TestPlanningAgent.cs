@@ -20,7 +20,7 @@ public class TestPlanningAgent
 
     public async Task<TestPlan> GeneratePlanAsync(CodeUnderTest code)
     {
-        var metrics = _metricsAnalyzer.Analyze(code.SourceCode);
+        var metrics = _metricsAnalyzer.Analyze(code.SourceCode, code.ClassName);
 
         var plan = new TestPlan
         {
@@ -48,10 +48,17 @@ public class TestPlanningAgent
             ? $"Injected dependencies: {string.Join(", ", metrics.InjectedDependencies)}"
             : "No injected dependencies (pure logic class).";
 
+        var perMethodCc = metrics.MethodComplexities.Count > 0
+            ? string.Join(", ", metrics.MethodComplexities
+                .OrderByDescending(kv => kv.Value)
+                .Select(kv => $"{kv.Key}: {kv.Value}"))
+            : "N/A";
+
         var prompt = $@"You are a test planning expert. The test strategy has already been determined to be ""{metrics.RecommendedStrategy}"" based on code metrics.
 
 CODE METRICS:
-- Cyclomatic complexity: {metrics.CyclomaticComplexity}
+- Total cyclomatic complexity: {metrics.CyclomaticComplexity}
+- Per-method complexity (highest first): {perMethodCc}
 - {depsInfo}
 - Is controller/endpoint: {metrics.IsControllerOrEndpoint}
 - Strategy reasoning: {metrics.Reasoning}
