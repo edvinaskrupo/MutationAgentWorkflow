@@ -30,6 +30,9 @@ public class CodeMetricsAnalyzer
         "ControllerBase", "Controller", "ApiController"
     };
 
+    private const int LongMethodThreshold = 30;
+    private const int HighParamThreshold = 4;
+
     public CodeMetrics Analyze(string sourceCode, string? targetClassName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(sourceCode);
@@ -59,6 +62,7 @@ public class CodeMetricsAnalyzer
         metrics.CyclomaticComplexity = metrics.MethodComplexities.Values.Sum();
         AnalyzeDependencies(classDecl, metrics);
         metrics.IsControllerOrEndpoint = DetectControllerOrEndpoint(classDecl);
+        AnalyzeCodeSmells(classDecl, metrics);
 
         DetermineStrategy(metrics);
 
@@ -125,6 +129,51 @@ public class CodeMetricsAnalyzer
         metrics.DependencyCount = metrics.InjectedDependencies.Count;
     }
 
+    private void AnalyzeCodeSmells(ClassDeclarationSyntax classDecl, CodeMetrics metrics)
+    {
+        int maxNesting = 0;
+
+        foreach (var method in classDecl.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        {
+            var name = method.Identifier.Text;
+            var lineSpan = method.GetLocation().GetLineSpan();
+            int lineCount = lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1;
+
+            if (lineCount > LongMethodThreshold)
+                metrics.LongMethods.Add($"{name} ({lineCount} lines)");
+
+            int paramCount = method.ParameterList.Parameters.Count;
+            if (paramCount > HighParamThreshold)
+                metrics.HighParamMethods.Add($"{name} ({paramCount} params)");
+
+            int methodMaxNesting = CalculateMaxNesting(method.Body ?? (SyntaxNode?)method.ExpressionBody ?? method);
+            if (methodMaxNesting > maxNesting)
+                maxNesting = methodMaxNesting;
+        }
+
+        metrics.MaxNestingDepth = maxNesting;
+    }
+
+    private int CalculateMaxNesting(SyntaxNode root)
+    {
+        int max = 0;
+        CalculateNestingRecursive(root, 0, ref max);
+        return max;
+    }
+
+    private void CalculateNestingRecursive(SyntaxNode node, int current, ref int max)
+    {
+        bool isNesting = node is IfStatementSyntax or WhileStatementSyntax or ForStatementSyntax
+            or ForEachStatementSyntax or DoStatementSyntax or SwitchStatementSyntax
+            or TryStatementSyntax;
+
+        int depth = isNesting ? current + 1 : current;
+        if (depth > max) max = depth;
+
+        foreach (var child in node.ChildNodes())
+            CalculateNestingRecursive(child, depth, ref max);
+    }
+
     private bool IsExternalDependency(string typeName)
     {
         var baseName = typeName.Split('<')[0].TrimStart('I');
@@ -167,21 +216,21 @@ public class CodeMetricsAnalyzer
     {
         if (metrics.IsControllerOrEndpoint)
         {
-            metrics.RecommendedStrategy = "Integration";
+            metrics.RecommendedStrategy = "Both";
             metrics.Reasoning = $"Class is a controller/endpoint with {metrics.DependencyCount} dependencies. " +
-                                "Integration tests are needed to verify component interactions.";
+                                "Both unit and component tests are needed.";
             return;
         }
 
         if (metrics.DependencyCount > 0)
         {
             bool allInterfaces = metrics.InjectedDependencies.All(d => d.StartsWith("I") && char.IsUpper(d.ElementAtOrDefault(1)));
-            metrics.RecommendedStrategy = "Integration";
+            metrics.RecommendedStrategy = "Both";
             metrics.Reasoning = $"Class has {metrics.DependencyCount} injected dependencies " +
                                 $"({string.Join(", ", metrics.InjectedDependencies)}). " +
                                 (allInterfaces
-                                    ? "All are interface-typed, suitable for mocking in integration tests."
-                                    : "Dependencies should be mocked in integration tests.");
+                                    ? "All are interface-typed, suitable for mocking. Both unit and component tests will be generated."
+                                    : "Dependencies should be mocked in component tests. Unit tests will cover standalone logic.");
             return;
         }
 
@@ -194,6 +243,6 @@ public class CodeMetricsAnalyzer
 
         metrics.RecommendedStrategy = "Unit";
         metrics.Reasoning = $"Pure logic class with cyclomatic complexity {metrics.CyclomaticComplexity} " +
-                            "and no external dependencies. Unit tests are appropriate.";
+                            "and no external dependencies. Only unit tests are appropriate.";
     }
 }

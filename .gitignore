@@ -34,3 +34,7 @@ appsettings.*.json
 .idea/
 *.suo
 *.userprefs
+
+# Stray Console-folder run artefacts (real experiment data lives in experiment_results/)
+src/MutationAgentWorkflow.Console/*Tests.cs
+src/MutationAgentWorkflow.Console/*_artifacts.json

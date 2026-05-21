@@ -4,12 +4,12 @@ using MutationAgentWorkflow.Core.Models;
 
 namespace MutationAgentWorkflow.Agents;
 
-public class TestGenerationAgent
+public class UnitTestGenerationAgent
 {
     private readonly Kernel _kernel;
-    public string Name => "Test Generation Agent";
+    public string Name => "Unit Test Generation Agent";
 
-    public TestGenerationAgent(string apiKey, string model = "gpt-4o")
+    public UnitTestGenerationAgent(string apiKey, string model = "gpt-5.4-mini")
     {
         var builder = Kernel.CreateBuilder();
         builder.AddOpenAIChatCompletion(model, apiKey);
@@ -32,7 +32,8 @@ public class TestGenerationAgent
         return new TestSuite
         {
             TestCode = testCode,
-            TestFilePath = $"{code.ClassName}Tests.cs"
+            TestFilePath = $"{code.ClassName}UnitTests.cs",
+            TestType = "Unit"
         };
     }
 
@@ -51,18 +52,13 @@ public class TestGenerationAgent
 CODE METRICS:
 - Total cyclomatic complexity: {plan.Metrics.CyclomaticComplexity}
 - Per-method complexity (highest first): {perMethodCc}
-- Injected dependencies: {(plan.Metrics.InjectedDependencies.Count > 0 ? string.Join(", ", plan.Metrics.InjectedDependencies) : "None")}
-- Is controller/endpoint: {plan.Metrics.IsControllerOrEndpoint}
+- This is a pure logic class with no external dependencies.
 ";
         }
 
-        var mockingInstructions = plan.Strategy == "Integration"
-            ? BuildMockingInstructions(plan)
-            : "This is a pure logic class with no external dependencies. Do NOT use any mocking framework.";
+        return $@"You are an expert C# unit test developer. Generate xUnit UNIT tests for the code below.
 
-        return $@"You are an expert C# test developer. Generate xUnit tests for the code below.
-
-TEST STRATEGY: {plan.Strategy}
+TEST STRATEGY: Unit (kodo vieneto testai)
 {metricsSection}
 PLANNING SUGGESTIONS:
 {plan.Suggestion}
@@ -80,24 +76,11 @@ STRICT REQUIREMENTS:
 4. Use [Fact] for single-case tests and [Theory] with [InlineData(...)] for parameterized tests.
 5. Test both happy paths and edge cases (null inputs, boundary values, empty collections).
 6. Include all necessary using statements at the top of the file.
-
-{mockingInstructions}
+7. Do NOT use any mocking framework. This is a pure unit test class.
+8. Focus on boundary value analysis: test exact boundary values (e.g., length == min, length == max, length == min-1, length == max+1).
+9. Every Assert must verify a single, specific behavior.
 
 Generate ONLY the complete test class code. No explanations, no markdown fences.";
-    }
-
-    private string BuildMockingInstructions(TestPlan plan)
-    {
-        var deps = plan.Metrics?.InjectedDependencies ?? new List<string>();
-        var depsList = deps.Count > 0
-            ? string.Join(", ", deps)
-            : "identified dependencies";
-
-        return $@"MOCKING REQUIREMENTS (Integration tests):
-- Use the Moq library (Mock<T>) to mock all injected dependencies: {depsList}.
-- Include ""using Moq;"" at the top.
-- In the Arrange section, create mocks, set up behaviors with .Setup(...), and inject them into the class constructor.
-- Verify mock interactions with .Verify(...) where appropriate in the Assert section.";
     }
 
     private static string StripMarkdownFences(string code)

@@ -1,82 +1,121 @@
 # Mutation-Guided Agentic Test Generation Workflow
 
-A Bachelor's thesis prototype demonstrating multi-agent workflow for improving unit test adequacy using mutation testing feedback.
+A Bachelor's thesis prototype that uses a pipeline of LLM-based agents to generate, validate and improve unit / integration tests for C# code, with quality measured by Stryker.NET mutation testing.
+
+The repository contains only the experimental system; the thesis document (`.tex`, `.bib`) and related writing artifacts are kept outside this repository.
+
+## What the system does
+
+Given a C# source file, the system:
+
+1. **Analyses the code** (cyclomatic complexity, dependencies, controller / endpoint heuristics) to choose between a *Unit*, *Integration* or *Skip* strategy.
+2. **Drafts a test plan** with an LLM-based planning agent (methods to cover, mocks, scenarios).
+3. **Generates an xUnit test class** using a strategy-specific generation agent (unit-only or integration-with-Moq).
+4. **Scaffolds a real .NET test project**, compiles it, and runs the tests against the unmutated source.
+5. **Repairs failing tests** in a validation loop: on build error, test failure, or excessive runtime, a repair agent is called with the relevant error output and produces a corrected test class. The loop continues up to a configurable retry budget.
+6. **Runs Stryker.NET mutation analysis** on the validated test suite and reports the mutation score.
+
+All per-run artefacts (final test class, structured JSON report) are written to `experiment_results/`.
 
 ## Architecture
 
-- **Test Planning Agent**: Analyzes code and suggests test strategy
-- **Test Generation Agent**: Generates xUnit tests based on the plan
-- **Mutation Analysis Agent**: Coordinates mutation testing with Stryker.NET
-- **Test Improvement Agent**: Suggests improvements based on survived mutants
+```
+   Source code
+        |
+        v
+ [CodeMetricsAnalyzer] --> strategy: Unit | Integration | Skip
+        |
+        v
+ [TestPlanningAgent] --> test plan
+        |
+        v
+ [UnitTestGenerationAgent | IntegrationTestGenerationAgent]
+        |
+        v
+ [TestProjectScaffolder] --> build + run tests
+        |
+        v
+ build / test / runtime errors? --[yes]--> [TestImprovementAgent] --(loop, up to N retries)
+        |
+       [no]
+        |
+        v
+ [MutationAnalysisAgent] --> Stryker.NET --> mutation score + JSON report
+```
+
+| Layer | Project | Role |
+|-------|---------|------|
+| Domain models | `MutationAgentWorkflow.Core` | `CodeUnderTest`, `TestPlan`, `TestSuite`, `MutationReport`, `WorkflowResult`, `IterationArtifact`, plus `CodeMetricsAnalyzer` (Roslyn). |
+| LLM agents | `MutationAgentWorkflow.Agents` | `TestPlanningAgent`, `UnitTestGenerationAgent`, `IntegrationTestGenerationAgent`, `TestImprovementAgent`, `MutationAnalysisAgent`. |
+| Runtime tools | `MutationAgentWorkflow.Tools` | `TestProjectScaffolder` (creates and updates the temporary test project), `DotNetTestRunner`, `StrykerRunner`. |
+| Entry point | `MutationAgentWorkflow.Console` | `Program.cs` — loads config, runs the pipeline, writes artefacts. |
+| Sample inputs | `MutationAgentWorkflow.Sample` | `PasswordValidator`, `UserService`, `OrderProcessor` — used as code under test in the experiments. |
 
 ## Prerequisites
 
-1. **.NET 9 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/9.0)
-2. **OpenAI API Key** - [Get one here](https://platform.openai.com/api-keys)
-3. **Stryker.NET** (optional for full mutation testing):
-```bash
-   dotnet tool install -g dotnet-stryker
-```
+- **.NET 9 SDK** — <https://dotnet.microsoft.com/download/dotnet/9.0>
+- **OpenAI API key** — <https://platform.openai.com/api-keys>
+- **Stryker.NET** (required for the mutation-analysis stage):
+  ```bash
+  dotnet tool install -g dotnet-stryker
+  ```
 
 ## Setup
 
-1. Clone or create the project structure.
-2. Open `MutationAgentWorkflow/src/MutationAgentWorkflow.Console/appsettings.json` and set `OpenAI:ApiKey` to your API key (and optionally `OpenAI:Model`, e.g. `gpt-4o-mini`).
-3. Build from the repository root (single solution including all workflow projects):
-```bash
-   dotnet build BachelorProject.sln
-```
-   Or from this folder: `dotnet build MutationAgentWorkflow.sln`
+The Console loads `appsettings.json` first and then, if present, `appsettings.local.json` on top (the second file overrides values from the first). `appsettings.local.json` is gitignored, so it's the safe place to keep your real API key.
 
-## Running the Prototype
+1. Create `src/MutationAgentWorkflow.Console/appsettings.local.json` with at least your key, e.g.:
+
+   ```json
+   {
+     "OpenAI": {
+       "ApiKey": "sk-..."
+     }
+   }
+   ```
+
+   The tracked `appsettings.json` ships with a `YOUR_OPENAI_API_KEY` placeholder — leave it as-is and **do not commit a real key in its place**.
+
+2. Optional — override any other value in `appsettings.local.json`:
+   - `OpenAI:Model` — e.g. `gpt-5.4-mini` (model used in the thesis experiments)
+   - `Workflow:MaxRetries`, `Workflow:RuntimeThresholdSeconds`, `Workflow:TargetMutationScore`
+   - `CodeUnderTest:SourceFile` — path to a `.cs` file (absolute, or relative to the Console working directory)
+   - `CodeUnderTest:ClassName` — class name (defaults to the file name)
+
+   If `CodeUnderTest:SourceFile` is omitted, the Console loads `MutationAgentWorkflow.Sample/PasswordValidator.cs` by default.
+
+## Build and run
+
+From the repository root:
+
 ```bash
-cd MutationAgentWorkflow/src/MutationAgentWorkflow.Console
+dotnet build MutationAgentWorkflow.sln
+cd src/MutationAgentWorkflow.Console
 dotnet run
 ```
 
-## Project structure
+The Console prints each pipeline stage to standard output and writes the final test class plus a per-run JSON artefact under `experiment_results/`.
 
-The repository root contains a single solution (`BachelorProject.sln`) with five projects: **Core**, **Agents**, **Tools**, **Console**, and **MutationAgentWorkflow.Sample**. The Console loads the **code under test** from a real class in the solution: by default it reads `MutationAgentWorkflow.Sample/PasswordValidator.cs`. You can point at another file via `appsettings.json` (see below). The nested `MutationAgentWorkflow.sln` in this folder can also be used. DotNetTestRunner and StrykerRunner exist in Tools for future integration but are not invoked in the current single-pass workflow.
+## Repository structure
 
-**Optional config** (in `MutationAgentWorkflow.Console/appsettings.json`): To test a different class, add `CodeUnderTest:SourceFile` (path to a `.cs` file, absolute or relative to the current directory) and optionally `CodeUnderTest:ClassName` (if omitted, the class name is derived from the file name). Example: `"CodeUnderTest": { "SourceFile": "../MutationAgentWorkflow.Sample/PasswordValidator.cs", "ClassName": "PasswordValidator" }`.
+```
+MutationAgentWorkflow/
+├── src/
+│   ├── MutationAgentWorkflow.Core/      # Models + Roslyn-based code metrics
+│   ├── MutationAgentWorkflow.Agents/    # LLM agents
+│   ├── MutationAgentWorkflow.Tools/     # Scaffolder, Stryker / dotnet test runners
+│   ├── MutationAgentWorkflow.Console/   # Entry point + appsettings.json
+│   └── MutationAgentWorkflow.Sample/    # Sample classes used as code under test
+├── experiment_results/                  # Generated tests + JSON reports per run
+├── MutationAgentWorkflow.sln
+├── README.md
+└── .gitignore
+```
 
-## Current Limitations (Prototype Phase)
+## Experimental data
 
-- Mutation testing uses simulated data (Stryker integration is stubbed)
-- No iterative improvement loop (runs single pass)
-- Test file is generated but not automatically compiled/run
-- No actual project structure creation for test execution
-- Code under test is loaded from the Sample project (or from a path in config); generated tests are not yet wired to a test project that references Sample
-
-## Extending This Prototype
-
-### To add real Stryker integration:
-
-1. Create a temporary test project structure
-2. Write generated tests to actual .cs files
-3. Run `dotnet stryker` command
-4. Parse the JSON output from `StrykerOutput/reports/mutation-report.json`
-
-### To add iterative improvement:
-
-1. Add a loop in Program.cs after Stage 4
-2. Re-generate tests based on improvement suggestions
-3. Re-run mutation testing
-4. Continue until target mutation score is reached
-
-### To add different LLM providers:
-
-Modify agent constructors to use Azure OpenAI, Anthropic Claude, or local models.
-
-## Thesis Evaluation Metrics
-
-Track these for your experiments:
-- Mutation score improvement (initial vs final)
-- Number of iterations needed
-- Test compilation success rate
-- Human edit requirements
-- Time per iteration
+`experiment_results/` contains the artefacts referenced in the thesis evaluation: per-class test files (`*_Tests.cs`) and structured JSON reports (`*_artifacts.json`) for `PasswordValidator`, `UserService` and `OrderProcessor`, three runs each. The files are named `<Class>_run<N>_*.{cs,json}` so that any single run can be inspected end-to-end (final test class plus full iteration history and Stryker result inside the JSON).
 
 ## License
 
-MIT (or as per your university requirements)
+MIT — see `LICENSE` if present, or the licensing notes in the accompanying thesis document.

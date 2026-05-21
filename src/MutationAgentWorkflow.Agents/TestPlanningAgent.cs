@@ -11,7 +11,7 @@ public class TestPlanningAgent
     private readonly CodeMetricsAnalyzer _metricsAnalyzer = new();
     public string Name => "Test Planning Agent";
 
-    public TestPlanningAgent(string apiKey, string model = "gpt-4o")
+    public TestPlanningAgent(string apiKey, string model = "gpt-5.4-mini")
     {
         var builder = Kernel.CreateBuilder();
         builder.AddOpenAIChatCompletion(model, apiKey);

@@ -9,60 +9,64 @@ public class TestImprovementAgent
     private readonly Kernel _kernel;
     public string Name => "Test Improvement Agent";
 
-    public TestImprovementAgent(string apiKey, string model = "gpt-4o")
+    public TestImprovementAgent(string apiKey, string model = "gpt-5.4-mini")
     {
         var builder = Kernel.CreateBuilder();
         builder.AddOpenAIChatCompletion(model, apiKey);
         _kernel = builder.Build();
     }
 
-    public async Task<string> ImproveTestsAsync(MutationReport report, TestSuite currentTests, CodeUnderTest code, TestPlan plan)
+    public async Task<string> FixTestsAsync(
+        string currentTestCode,
+        CodeUnderTest code,
+        TestPlan plan,
+        string errorOutput,
+        bool isBuildError)
     {
         var chatService = _kernel.GetRequiredService<IChatCompletionService>();
 
-        var survivedDetails = string.Join("\n", report.SurvivedMutantDetails.Select(m =>
-            $"- {m.MutationType} at {m.Location}: '{m.OriginalCode}' -> '{m.MutatedCode}'"));
+        var errorType = isBuildError ? "COMPILATION" : "TEST EXECUTION";
+        var fixFocus = isBuildError
+            ? "Fix ALL compilation errors. Ensure using statements, type names, and method signatures match the source code exactly."
+            : "Fix the failing tests. Ensure each test's assertions match the actual behavior of the source code. Do NOT change the source code, only the tests.";
 
-        var mockingNote = plan.Strategy == "Integration"
-            ? "Use Moq (Mock<T>) for all injected dependencies. Include 'using Moq;'."
-            : "This is a unit test class. Do NOT use any mocking framework.";
+        var mockingNote = plan.Strategy == "Both" || plan.Strategy == "Integration"
+            ? "If the test file contains integration tests using Moq (Mock<T>), ensure mock setups match the actual interface signatures. Include 'using Moq;'."
+            : "This test file contains only unit tests. Do NOT use any mocking framework.";
 
-        var prompt = $@"You are a test improvement expert. Your task is to improve the existing test code so that it kills the survived mutants listed below.
+        var prompt = $@"You are a test repair expert. The test code below has {errorType} ERRORS that must be fixed.
 
 SOURCE CODE UNDER TEST:
 {code.SourceCode}
 
-CURRENT TEST CODE:
-{currentTests.TestCode}
+CURRENT TEST CODE (contains errors):
+{currentTestCode}
 
-MUTATION SCORE: {report.MutationScore}%
-TOTAL MUTANTS: {report.TotalMutants}
-KILLED: {report.KilledMutants}
-SURVIVED: {report.SurvivedMutants}
-
-SURVIVED MUTANT DETAILS:
-{survivedDetails}
+ERROR OUTPUT:
+{errorOutput}
 
 TEST STRATEGY: {plan.Strategy}
 {mockingNote}
 
-STRICT REQUIREMENTS:
-1. Return the COMPLETE, improved test class — not just the changes.
-2. Keep all existing tests that already pass and kill mutants.
-3. Add new test methods or strengthen assertions to kill survived mutants.
-4. Every test method MUST use explicit // Arrange, // Act, // Assert comment sections.
-5. Use descriptive method names: MethodName_Scenario_ExpectedBehavior.
-6. Include all necessary using statements.
+TASK: {fixFocus}
 
-Generate ONLY the complete improved test class code. No explanations, no markdown fences.";
+STRICT REQUIREMENTS:
+1. Return the COMPLETE, fixed test class — not just the changes.
+2. Keep all tests that already work. Only fix the broken ones.
+3. Every test method MUST use explicit // Arrange, // Act, // Assert comment sections.
+4. Use descriptive method names: MethodName_Scenario_ExpectedBehavior.
+5. Include all necessary using statements.
+6. Do NOT remove tests — fix them or replace broken ones with correct equivalents.
+
+Generate ONLY the complete fixed test class code. No explanations, no markdown fences.";
 
         var history = new ChatHistory();
         history.AddUserMessage(prompt);
 
         var result = await chatService.GetChatMessageContentAsync(history);
-        var improvedCode = result.Content ?? currentTests.TestCode;
+        var fixedCode = result.Content ?? currentTestCode;
 
-        return StripMarkdownFences(improvedCode);
+        return StripMarkdownFences(fixedCode);
     }
 
     private static string StripMarkdownFences(string code)

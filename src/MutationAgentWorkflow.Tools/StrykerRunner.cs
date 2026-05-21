@@ -14,7 +14,7 @@ public class StrykerRunner
             var sourceProjectName = Path.GetFileNameWithoutExtension(sourceProjectPath);
             var outputDir = Path.Combine(testProjectDir, "StrykerOutput");
 
-            var strykerArgs = $"--project {sourceProjectName}.csproj --reporter json --reporter cleartext --output \"{outputDir}\"";
+            var strykerArgs = $"--project {sourceProjectName}.csproj --reporter json --reporter html --reporter cleartext --output \"{outputDir}\"";
 
             Console.WriteLine($"  Running Stryker in: {testProjectDir}");
 
@@ -37,6 +37,9 @@ public class StrykerRunner
             if (reportPath is not null)
             {
                 Console.WriteLine($"  Found Stryker report: {reportPath}");
+                var htmlReport = Path.Combine(Path.GetDirectoryName(reportPath)!, "mutation-report.html");
+                if (File.Exists(htmlReport))
+                    Console.WriteLine($"  HTML report: {htmlReport}");
                 return await ParseStrykerJsonAsync(reportPath);
             }
 

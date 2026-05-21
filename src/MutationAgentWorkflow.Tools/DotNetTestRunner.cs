@@ -11,6 +11,7 @@ public class TestRunResult
     public int Skipped { get; set; }
     public int Total => Passed + Failed + Skipped;
     public string Output { get; set; } = string.Empty;
+    public TimeSpan Duration { get; set; }
 }
 
 public class DotNetTestRunner
@@ -18,10 +19,13 @@ public class DotNetTestRunner
     public async Task<TestRunResult> RunTestsAsync(string solutionOrProjectDir)
     {
         var result = new TestRunResult();
+        var sw = Stopwatch.StartNew();
 
         try
         {
             var (exitCode, output, error) = await RunCommandAsync("dotnet", "test --no-build --verbosity normal", solutionOrProjectDir);
+            sw.Stop();
+            result.Duration = sw.Elapsed;
             result.Output = output + error;
 
             ParseTestCounts(result, output);
@@ -30,6 +34,8 @@ public class DotNetTestRunner
         }
         catch (Exception ex)
         {
+            sw.Stop();
+            result.Duration = sw.Elapsed;
             result.Output = ex.Message;
             result.AllTestsPass = false;
         }

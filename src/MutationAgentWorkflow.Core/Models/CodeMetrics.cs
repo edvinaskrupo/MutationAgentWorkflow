@@ -10,4 +10,9 @@ public class CodeMetrics
     public bool IsControllerOrEndpoint { get; set; }
     public string RecommendedStrategy { get; set; } = string.Empty;
     public string Reasoning { get; set; } = string.Empty;
+
+    // Lightweight code smell indicators
+    public List<string> LongMethods { get; set; } = new();
+    public List<string> HighParamMethods { get; set; } = new();
+    public int MaxNestingDepth { get; set; }
 }

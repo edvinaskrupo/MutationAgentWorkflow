@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace MutationAgentWorkflow.Tools;
 
@@ -16,6 +17,8 @@ public class TestProjectScaffolder
         public string TestOutput { get; set; } = string.Empty;
         public int TestsPassed { get; set; }
         public int TestsFailed { get; set; }
+        public int AnalyzerWarnings { get; set; }
+        public TimeSpan TestRunDuration { get; set; }
     }
 
     public async Task<ScaffoldResult> ScaffoldAsync(
@@ -47,6 +50,7 @@ public class TestProjectScaffolder
         var (exitCode, output, _) = await RunCommandAsync("dotnet", "build", baseDir);
         result.BuildSucceeded = exitCode == 0;
         result.BuildOutput = output;
+        result.AnalyzerWarnings = CountAnalyzerWarnings(output);
 
         if (result.BuildSucceeded)
         {
@@ -56,6 +60,7 @@ public class TestProjectScaffolder
             result.TestOutput = testResult.Output;
             result.TestsPassed = testResult.Passed;
             result.TestsFailed = testResult.Failed;
+            result.TestRunDuration = testResult.Duration;
         }
 
         return result;
@@ -70,6 +75,7 @@ public class TestProjectScaffolder
         var (exitCode, output, _) = await RunCommandAsync("dotnet", "build", scaffold.SolutionDir);
         scaffold.BuildSucceeded = exitCode == 0;
         scaffold.BuildOutput = output;
+        scaffold.AnalyzerWarnings = CountAnalyzerWarnings(output);
 
         if (scaffold.BuildSucceeded)
         {
@@ -79,11 +85,18 @@ public class TestProjectScaffolder
             scaffold.TestOutput = testResult.Output;
             scaffold.TestsPassed = testResult.Passed;
             scaffold.TestsFailed = testResult.Failed;
+            scaffold.TestRunDuration = testResult.Duration;
         }
         else
         {
             scaffold.TestsPass = false;
+            scaffold.TestRunDuration = TimeSpan.Zero;
         }
+    }
+
+    private static int CountAnalyzerWarnings(string buildOutput)
+    {
+        return Regex.Matches(buildOutput, @"warning (CA|IDE)\d+", RegexOptions.IgnoreCase).Count;
     }
 
     private static async Task WriteSourceProject(string dir, string sourceCode, string className)
@@ -102,7 +115,8 @@ public class TestProjectScaffolder
 
     private static async Task WriteTestProject(string dir, string sourceProjectDir, string testCode, string className, string testStrategy)
     {
-        var moqReference = testStrategy == "Integration"
+        bool needsMoq = testStrategy == "Both" || testStrategy == "Integration";
+        var moqReference = needsMoq
             ? @"    <PackageReference Include=""Moq"" Version=""4.20.72"" />"
             : "";
 
@@ -112,6 +126,8 @@ public class TestProjectScaffolder
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-all</AnalysisLevel>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.12.0"" />

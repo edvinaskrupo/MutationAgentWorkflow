@@ -3,6 +3,7 @@ using MutationAgentWorkflow.Agents;
 using MutationAgentWorkflow.Core.Models;
 using MutationAgentWorkflow.Tools;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace MutationAgentWorkflow.Console;
 
@@ -15,19 +16,22 @@ class Program
         var config = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile("appsettings.json")
+            .AddJsonFile("appsettings.local.json", optional: true)
             .Build();
 
         var apiKey = config["OpenAI:ApiKey"] ?? throw new Exception("OpenAI API key not found in appsettings.json");
-        var model = config["OpenAI:Model"] ?? "gpt-5.4-nano";
-        var maxIterations = int.TryParse(config["Workflow:MaxIterations"], out var mi) ? mi : 3;
+        var model = config["OpenAI:Model"] ?? "gpt-5.4-mini";
+        var maxRetries = int.TryParse(config["Workflow:MaxRetries"], out var mr) ? mr : 3;
+        var runtimeThreshold = int.TryParse(config["Workflow:RuntimeThresholdSeconds"], out var rt) ? rt : 60;
         var targetScore = double.TryParse(config["Workflow:TargetMutationScore"], out var ts) ? ts : 80.0;
 
         var codeUnderTest = await LoadCodeUnderTestAsync(config);
 
         var planningAgent = new TestPlanningAgent(apiKey, model);
-        var generationAgent = new TestGenerationAgent(apiKey, model);
-        var mutationAgent = new MutationAnalysisAgent();
+        var unitAgent = new UnitTestGenerationAgent(apiKey, model);
+        var integrationAgent = new IntegrationTestGenerationAgent(apiKey, model);
         var improvementAgent = new TestImprovementAgent(apiKey, model);
+        var mutationAgent = new MutationAnalysisAgent();
         var scaffolder = new TestProjectScaffolder();
 
         var stopwatch = Stopwatch.StartNew();
@@ -35,11 +39,10 @@ class Program
 
         try
         {
-            // ===== STAGE 1: Test Planning (deterministic strategy + AI suggestions) =====
-            PrintStageHeader(1, "Test Planning");
+            // ===== STAGE 1: Analysis =====
+            PrintStageHeader(1, "Code Analysis & Test Planning");
 
             var testPlan = await planningAgent.GeneratePlanAsync(codeUnderTest);
-
             PrintMetrics(testPlan);
 
             if (testPlan.Strategy == "Skip")
@@ -52,137 +55,180 @@ class Program
 
             System.Console.WriteLine($"  AI Suggestions:\n{Indent(testPlan.Suggestion, 4)}\n");
 
-            // ===== STAGE 2: Test Generation =====
-            PrintStageHeader(2, "Test Generation");
+            // ===== STAGE 2: Test Generation (parallel if Both) =====
+            PrintStageHeader(2, $"Test Generation (strategy: {testPlan.Strategy})");
 
-            var testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
-            System.Console.WriteLine($"  Generated {testSuite.TestFilePath}");
-            System.Console.WriteLine($"  ({CountLines(testSuite.TestCode)} lines of test code)\n");
+            TestSuite? unitTests = null;
+            TestSuite? integrationTests = null;
 
-            workflowResult.TotalTestsGenerated++;
-
-            // ===== STAGE 3: Scaffold & Build =====
-            PrintStageHeader(3, "Project Scaffolding");
-
-            var scaffold = await scaffolder.ScaffoldAsync(
-                codeUnderTest.SourceCode,
-                codeUnderTest.ClassName,
-                testSuite.TestCode,
-                testPlan.Strategy);
-
-            if (!scaffold.BuildSucceeded)
+            if (testPlan.Strategy == "Unit")
             {
-                System.Console.WriteLine("  Build FAILED. Generated tests have compilation errors.");
-                System.Console.WriteLine($"  Output:\n{Indent(scaffold.BuildOutput, 4)}");
-                System.Console.WriteLine("\n  Attempting to fix via re-generation...\n");
+                unitTests = await unitAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+                System.Console.WriteLine($"  Generated unit tests: {unitTests.TestFilePath} ({CountLines(unitTests.TestCode)} lines)");
+            }
+            else if (testPlan.Strategy == "Both")
+            {
+                System.Console.WriteLine("  Generating unit and integration tests in parallel...");
+                var unitTask = unitAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+                var integTask = integrationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
+                await Task.WhenAll(unitTask, integTask);
 
-                testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
-                await scaffolder.UpdateTestCode(scaffold, testSuite.TestCode, codeUnderTest.ClassName);
+                unitTests = unitTask.Result;
+                integrationTests = integTask.Result;
 
-                if (!scaffold.BuildSucceeded)
-                {
-                    System.Console.WriteLine("  Build still FAILED after re-generation. Exiting.");
-                    return;
-                }
+                System.Console.WriteLine($"  Generated unit tests: {unitTests.TestFilePath} ({CountLines(unitTests.TestCode)} lines)");
+                System.Console.WriteLine($"  Generated integration tests: {integrationTests.TestFilePath} ({CountLines(integrationTests.TestCode)} lines)");
             }
 
-            System.Console.WriteLine($"  Build succeeded.");
+            workflowResult.TotalTestsGenerated = 1 + (integrationTests != null ? 1 : 0);
+            System.Console.WriteLine();
 
-            if (!scaffold.TestsPass)
+            // ===== STAGE 3: Merge =====
+            PrintStageHeader(3, "Test Suite Merge");
+
+            var mergedCode = MergeTestSuites(unitTests, integrationTests, codeUnderTest.ClassName);
+            System.Console.WriteLine($"  Merged test suite: {CountLines(mergedCode)} lines total\n");
+
+            // ===== STAGE 4: Validation Loop =====
+            PrintStageHeader(4, $"Build & Validation Loop (max {maxRetries} retries, runtime threshold {runtimeThreshold}s)");
+
+            TestProjectScaffolder.ScaffoldResult? scaffold = null;
+            bool validationPassed = false;
+            string testStrategy = integrationTests != null ? "Both" : "Unit";
+
+            for (int retry = 1; retry <= maxRetries; retry++)
             {
-                System.Console.WriteLine($"  Tests FAILED on original code ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed).");
-                System.Console.WriteLine($"  Output:\n{Indent(scaffold.TestOutput, 4)}");
-                System.Console.WriteLine("\n  Attempting to fix via re-generation...\n");
+                System.Console.WriteLine($"  --- Attempt {retry}/{maxRetries} ---");
 
-                testSuite = await generationAgent.GenerateTestsAsync(testPlan, codeUnderTest);
-                await scaffolder.UpdateTestCode(scaffold, testSuite.TestCode, codeUnderTest.ClassName);
+                if (scaffold == null)
+                {
+                    scaffold = await scaffolder.ScaffoldAsync(
+                        codeUnderTest.SourceCode, codeUnderTest.ClassName,
+                        mergedCode, testStrategy);
+                }
+                else
+                {
+                    await scaffolder.UpdateTestCode(scaffold, mergedCode, codeUnderTest.ClassName);
+                }
+
+                var artifact = new IterationArtifact
+                {
+                    Iteration = retry,
+                    UnitTestCode = unitTests?.TestCode ?? string.Empty,
+                    IntegrationTestCode = integrationTests?.TestCode ?? string.Empty,
+                    MergedTestCode = mergedCode,
+                    BuildSucceeded = scaffold.BuildSucceeded,
+                    TestsPass = scaffold.TestsPass,
+                    AnalyzerWarnings = scaffold.AnalyzerWarnings,
+                    TestRunDuration = scaffold.TestRunDuration,
+                    ErrorOutput = scaffold.BuildSucceeded ? scaffold.TestOutput : scaffold.BuildOutput
+                };
+                workflowResult.Artifacts.Add(artifact);
+                workflowResult.ValidationRetries = retry;
+
+                System.Console.WriteLine($"  Build: {(scaffold.BuildSucceeded ? "OK" : "FAILED")}");
+                if (scaffold.BuildSucceeded)
+                {
+                    System.Console.WriteLine($"  Tests: {(scaffold.TestsPass ? "PASS" : "FAIL")} ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed)");
+                    System.Console.WriteLine($"  Analyzer warnings: {scaffold.AnalyzerWarnings}");
+                    System.Console.WriteLine($"  Test runtime: {scaffold.TestRunDuration.TotalSeconds:F1}s");
+                }
 
                 if (!scaffold.BuildSucceeded)
                 {
-                    System.Console.WriteLine("  Re-generated tests failed to build. Exiting.");
-                    return;
+                    System.Console.WriteLine($"  Compilation errors detected. Sending to improvement agent...\n");
+                    mergedCode = await improvementAgent.FixTestsAsync(
+                        mergedCode, codeUnderTest, testPlan, scaffold.BuildOutput, isBuildError: true);
+                    continue;
                 }
 
                 if (!scaffold.TestsPass)
                 {
-                    System.Console.WriteLine($"  Tests still FAIL after re-generation ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed). Exiting.");
-                    return;
+                    System.Console.WriteLine($"  Test failures detected. Sending to improvement agent...\n");
+                    mergedCode = await improvementAgent.FixTestsAsync(
+                        mergedCode, codeUnderTest, testPlan, scaffold.TestOutput, isBuildError: false);
+                    continue;
                 }
+
+                if (scaffold.TestRunDuration.TotalSeconds > runtimeThreshold)
+                {
+                    System.Console.WriteLine($"  Runtime threshold exceeded ({scaffold.TestRunDuration.TotalSeconds:F1}s > {runtimeThreshold}s). Sending to improvement agent...\n");
+                    mergedCode = await improvementAgent.FixTestsAsync(
+                        mergedCode, codeUnderTest, testPlan,
+                        $"Test runtime exceeded threshold: {scaffold.TestRunDuration.TotalSeconds:F1}s > {runtimeThreshold}s. Simplify or remove slow tests.",
+                        isBuildError: false);
+                    continue;
+                }
+
+                System.Console.WriteLine($"  Validation PASSED.\n");
+                validationPassed = true;
+                break;
             }
 
-            System.Console.WriteLine($"  All tests pass ({scaffold.TestsPassed} passed).");
-            System.Console.WriteLine($"  Temp project: {scaffold.SolutionDir}\n");
-
-            // ===== STAGE 4: Iterative Mutation Testing & Improvement =====
-            PrintStageHeader(4, $"Mutation Testing Loop (max {maxIterations} iterations, target {targetScore}%)");
-
-            MutationReport? lastReport = null;
-
-            for (int iteration = 1; iteration <= maxIterations; iteration++)
+            if (!validationPassed)
             {
-                System.Console.WriteLine($"  --- Iteration {iteration}/{maxIterations} ---");
+                System.Console.WriteLine($"  Validation failed after {maxRetries} retries. Proceeding to mutation testing with best available suite.\n");
+            }
 
+            // ===== STAGE 5: Stryker Mutation Testing (FINAL, no loop) =====
+            PrintStageHeader(5, "Mutation Testing (final measurement)");
+
+            if (scaffold != null && scaffold.BuildSucceeded)
+            {
                 var report = await mutationAgent.RunAnalysisAsync(scaffold.TestProjectPath, scaffold.SourceProjectPath);
-                lastReport = report;
-
-                if (iteration == 1)
-                    workflowResult.InitialMutationScore = report.MutationScore;
+                workflowResult.FinalMutationScore = report.MutationScore;
 
                 PrintMutationReport(report);
-                workflowResult.IterationsCompleted = iteration;
 
                 if (report.MutationScore >= targetScore)
-                {
                     System.Console.WriteLine($"  Target mutation score ({targetScore}%) reached!\n");
-                    break;
-                }
-
-                if (report.SurvivedMutants == 0)
-                {
-                    System.Console.WriteLine("  No survived mutants. Nothing to improve.\n");
-                    break;
-                }
-
-                if (iteration < maxIterations)
-                {
-                    System.Console.WriteLine("  Improving tests to kill survived mutants...\n");
-                    var improvedCode = await improvementAgent.ImproveTestsAsync(report, testSuite, codeUnderTest, testPlan);
-                    testSuite.TestCode = improvedCode;
-
-                    await scaffolder.UpdateTestCode(scaffold, improvedCode, codeUnderTest.ClassName);
-
-                    if (!scaffold.BuildSucceeded)
-                    {
-                        System.Console.WriteLine("  Improved tests failed to build. Stopping iteration.");
-                        break;
-                    }
-
-                    if (!scaffold.TestsPass)
-                    {
-                        System.Console.WriteLine($"  Improved tests fail on original code ({scaffold.TestsPassed} passed, {scaffold.TestsFailed} failed). Stopping iteration.");
-                        break;
-                    }
-
-                    System.Console.WriteLine($"  Improved tests pass ({scaffold.TestsPassed} passed). Re-running Stryker...\n");
-                }
+                else
+                    System.Console.WriteLine($"  Below target ({report.MutationScore}% < {targetScore}%). See future work for iterative mutation improvement.\n");
+            }
+            else
+            {
+                System.Console.WriteLine("  Skipping mutation testing — tests did not pass validation.\n");
             }
 
-            // ===== Final Report =====
+            // ===== STAGE 6: Final Report =====
             stopwatch.Stop();
-            workflowResult.FinalMutationScore = lastReport?.MutationScore ?? 0;
             workflowResult.TotalDuration = stopwatch.Elapsed;
-
             PrintFinalReport(workflowResult);
 
-            var outputPath = Path.Combine(Directory.GetCurrentDirectory(), testSuite.TestFilePath);
-            await File.WriteAllTextAsync(outputPath, testSuite.TestCode);
+            var outputPath = Path.Combine(Directory.GetCurrentDirectory(), $"{codeUnderTest.ClassName}Tests.cs");
+            await File.WriteAllTextAsync(outputPath, mergedCode);
             System.Console.WriteLine($"Final test file saved to: {outputPath}");
+
+            var artifactsPath = Path.Combine(Directory.GetCurrentDirectory(), $"{codeUnderTest.ClassName}_artifacts.json");
+            var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+            await File.WriteAllTextAsync(artifactsPath, JsonSerializer.Serialize(workflowResult, jsonOptions));
+            System.Console.WriteLine($"Artifacts saved to: {artifactsPath}");
         }
         catch (Exception ex)
         {
             System.Console.WriteLine($"\nError: {ex.Message}");
             System.Console.WriteLine($"Stack trace:\n{ex.StackTrace}");
         }
+    }
+
+    private static string MergeTestSuites(TestSuite? unitTests, TestSuite? integrationTests, string className)
+    {
+        if (unitTests != null && integrationTests == null)
+            return unitTests.TestCode;
+
+        if (unitTests == null && integrationTests != null)
+            return integrationTests.TestCode;
+
+        if (unitTests == null && integrationTests == null)
+            return "// No tests generated";
+
+        return $@"{unitTests!.TestCode}
+
+// =============================================================================
+// Integration (Component) Tests
+// =============================================================================
+
+{integrationTests!.TestCode}";
     }
 
     private static async Task<CodeUnderTest> LoadCodeUnderTestAsync(IConfiguration config)
@@ -226,7 +272,7 @@ class Program
     private static void PrintStageHeader(int stage, string name)
     {
         System.Console.WriteLine($"[STAGE {stage}] {name}");
-        System.Console.WriteLine(new string('-', 50));
+        System.Console.WriteLine(new string('-', 60));
     }
 
     private static void PrintMetrics(TestPlan plan)
@@ -243,6 +289,14 @@ class Program
         }
         System.Console.WriteLine($"  Dependencies:          {m.DependencyCount} ({(m.InjectedDependencies.Count > 0 ? string.Join(", ", m.InjectedDependencies) : "none")})");
         System.Console.WriteLine($"  Controller/endpoint:   {m.IsControllerOrEndpoint}");
+
+        if (m.LongMethods.Count > 0)
+            System.Console.WriteLine($"  Long methods (>30 lines): {string.Join(", ", m.LongMethods)}");
+        if (m.HighParamMethods.Count > 0)
+            System.Console.WriteLine($"  High-param methods:    {string.Join(", ", m.HighParamMethods)}");
+        if (m.MaxNestingDepth > 0)
+            System.Console.WriteLine($"  Max nesting depth:     {m.MaxNestingDepth}");
+
         System.Console.WriteLine($"  Reasoning:             {m.Reasoning}\n");
     }
 
@@ -267,12 +321,20 @@ class Program
     private static void PrintFinalReport(WorkflowResult result)
     {
         System.Console.WriteLine("\n=== WORKFLOW SUMMARY ===");
-        System.Console.WriteLine($"  Initial Mutation Score: {result.InitialMutationScore}%");
         System.Console.WriteLine($"  Final Mutation Score:   {result.FinalMutationScore}%");
-        System.Console.WriteLine($"  Score Improvement:      +{result.FinalMutationScore - result.InitialMutationScore}%");
+        System.Console.WriteLine($"  Validation Retries:     {result.ValidationRetries}");
         System.Console.WriteLine($"  Tests Generated:        {result.TotalTestsGenerated}");
-        System.Console.WriteLine($"  Iterations Completed:   {result.IterationsCompleted}");
         System.Console.WriteLine($"  Total Duration:         {result.TotalDuration.TotalSeconds:F1}s");
+
+        if (result.Artifacts.Count > 0)
+        {
+            System.Console.WriteLine("  --- Artifact History ---");
+            foreach (var a in result.Artifacts)
+            {
+                System.Console.WriteLine($"    Attempt {a.Iteration}: build={a.BuildSucceeded}, tests={a.TestsPass}, warnings={a.AnalyzerWarnings}, runtime={a.TestRunDuration.TotalSeconds:F1}s");
+            }
+        }
+
         System.Console.WriteLine(new string('=', 40) + "\n");
     }
 
